@@ -1,0 +1,34 @@
+# Local secrets; publish only the placeholder template.
+.env*
+!.env.example
+*.env
+
+# Raw datasets and generated databases stay local.
+/data/
+*.csv
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Python environments, caches, and build output.
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+/build/
+/dist/
+
+# Machine-local files and logs.
+.DS_Store
+*.log
