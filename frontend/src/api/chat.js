@@ -1,4 +1,5 @@
 import { createSseParser } from './sse.js';
+import { validateToolResult } from '../results.js';
 
 const DEFAULT_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const INTERRUPTED = 'The response was interrupted. Please try your question again.';
@@ -53,6 +54,10 @@ export async function streamChat({ message, onEvent, signal, baseUrl = DEFAULT_B
   let answered = false;
   const parser = createSseParser(({ event, data }) => {
     if (completed) return;
+    if (event === 'tool_result') {
+      onEvent({ event, data: validateToolResult(data) });
+      return;
+    }
     if (event === 'error') {
       // Do not display raw backend exception text to visitors.
       throw new Error('The football agent could not complete this request. Please try again.');

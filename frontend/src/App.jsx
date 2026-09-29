@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { streamChat } from './api/chat.js';
 import ChatInput from './components/ChatInput.jsx';
 import ChatMessage from './components/ChatMessage.jsx';
+import { updateAssistant } from './results.js';
 
 const SUGGESTIONS = [
   { label: 'The big picture', question: 'How many matches are in the database?' },
@@ -35,9 +36,12 @@ export default function App() {
       return;
     }
     const controller = new AbortController();
+    const assistantId = crypto.randomUUID();
     controllerRef.current = controller;
     setMessages(previous => [...previous, {
       id: crypto.randomUUID(), role: 'user', content: question,
+    }, {
+      id: assistantId, role: 'assistant', content: '', results: [], status: 'streaming',
     }]);
     setError(null);
     setIsStreaming(true);
@@ -49,19 +53,18 @@ export default function App() {
         signal: controller.signal,
         onEvent: ({ event, data }) => {
           if (controllerRef.current !== controller) return;
+          setMessages(previous => updateAssistant(previous, assistantId, event, data));
           if (event === 'connected') setProgress('Analyzing your question…');
           if (event === 'tool_call') setProgress('Querying football data…');
           if (event === 'tool_result') setProgress('Preparing your answer…');
           if (event === 'final_answer') {
-            setMessages(previous => [...previous, {
-              id: crypto.randomUUID(), role: 'assistant', content: data.answer,
-            }]);
             setProgress('Finishing…');
           }
         },
       });
     } catch (failure) {
       if (controllerRef.current === controller) {
+        setMessages(previous => updateAssistant(previous, assistantId, 'error'));
         setError(controller.signal.aborted
           ? 'Request stopped. You can send another question.'
           : failure.message || 'Something went wrong. Please try again.');

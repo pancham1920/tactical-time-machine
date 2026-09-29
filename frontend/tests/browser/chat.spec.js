@@ -3,9 +3,60 @@ import { test, expect } from '@playwright/test';
 const event = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
 const success = event('connected', {})
   + event('tool_call', { tools: ['execute_sql'] })
-  + event('tool_result', { result: '{"rows":[{"matches":3}]}' })
+  + event('tool_result', { tool_call_id: 'count', tool: 'execute_sql', result: { columns: ['matches'], rows: [{ matches: 3 }], truncated: false } })
   + event('final_answer', { answer: 'There are 3 test matches.' })
   + event('complete', {});
+
+const toolEvent = (id, result) => event('tool_result', { tool_call_id: id, tool: 'execute_sql', result });
+
+test('renders charts, tables and multiple results without mixing successive responses', async ({ page }, testInfo) => {
+  let count = 0;
+  await page.route('**/chat/stream', route => {
+    count += 1;
+    const body = count === 1
+      ? toolEvent('values', { columns: ['name', 'market_value_in_eur'], rows: [
+        { name: 'Player A', market_value_in_eur: 1200000 }, { name: 'Player B', market_value_in_eur: 800000 },
+      ], truncated: false }) + toolEvent('matches', { columns: ['home_team', 'away_team', 'home_score'], rows: [
+        { home_team: '<img src=x>', away_team: 'Visitors', home_score: null },
+      ], truncated: true })
+      : toolEvent('values', { columns: ['total'], rows: [{ total: 12 }], truncated: false });
+    return route.fulfill({ contentType: 'text/event-stream', body: body
+      + event('final_answer', { answer: `Answer ${count}` }) + event('complete', {}) });
+  });
+  await page.goto('/');
+  const input = page.getByRole('textbox');
+  await input.fill('Show player values and matches');
+  await input.press('Enter');
+  await expect(page.getByText('Answer 1', { exact: true })).toBeVisible();
+  await expect(page.locator('.result-chart svg')).toBeVisible();
+  await expect(page.getByRole('cell', { name: '€1,200,000', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '—', exact: true })).toBeVisible();
+  await expect(page.getByText(/Showing the first 1 rows/)).toBeVisible();
+  await expect(page.getByRole('log').locator('img')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('block6-results.png'), fullPage: true });
+  await input.fill('Count something else');
+  await input.press('Enter');
+  await expect(page.getByText('Answer 2', { exact: true })).toBeVisible();
+  const answers = page.locator('.message-assistant');
+  await expect(answers.nth(0).locator('.query-result')).toHaveCount(2);
+  await expect(answers.nth(1).locator('.stat-card dd')).toHaveText('12');
+});
+
+test('retains empty and failed query states when the explanation stream fails', async ({ page }) => {
+  await page.route('**/chat/stream', route => route.fulfill({ contentType: 'text/event-stream', body:
+    toolEvent('empty', { columns: [], rows: [], truncated: false })
+    + toolEvent('failed', { error: '/private/sql/error' })
+    + event('error', { message: 'private model detail' }),
+  }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /The big picture/ }).click();
+  await expect(page.getByText('No matching records found.')).toBeVisible();
+  await expect(page.getByText('This database query could not produce displayable results.')).toBeVisible();
+  await expect(page.getByText(/Response incomplete/)).toBeVisible();
+  await expect(page.getByRole('log')).not.toContainText('/private');
+  await expect(page.getByRole('textbox')).toBeEnabled();
+});
 
 test('sends a question, prevents duplicate submission, and renders the answer', async ({ page }) => {
   let release;
@@ -34,6 +85,7 @@ test('sends a question, prevents duplicate submission, and renders the answer', 
   await expect(input).toHaveValue('');
   await expect(page.getByRole('status')).toHaveCount(0);
   expect(requests).toBe(1);
+  await expect(page.locator('.stat-card dd')).toHaveText('3');
 });
 
 test('an HTTP failure restores the composer and allows a new request', async ({ page }) => {

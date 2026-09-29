@@ -5,7 +5,7 @@ import { answerText, streamChat } from '../src/api/chat.js';
 const event = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
 const success = event('connected', {})
   + event('tool_call', { tools: ['execute_sql'] })
-  + event('tool_result', { result: '{"rows":[{"matches":3}]}' })
+  + event('tool_result', { tool_call_id: 'count', tool: 'execute_sql', result: { columns: ['matches'], rows: [{ matches: 3 }], truncated: false } })
   + event('final_answer', { answer: 'Müller ⚽: 3 matches' })
   + event('complete', {});
 
@@ -42,6 +42,7 @@ test('posts only the latest question and decodes split UTF-8 correctly', async t
     'connected', 'tool_call', 'tool_result', 'final_answer', 'complete',
   ]);
   assert.equal(events[3].data.answer, 'Müller ⚽: 3 matches');
+  assert.deepEqual(events[2].data.result.rows, [{ matches: 3 }]);
 });
 
 test('complete cancels the reader even if the server leaves the connection open', async t => {

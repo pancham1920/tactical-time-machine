@@ -1,4 +1,4 @@
-# Block 5: React chat interface
+# Blocks 5–6: React chat and database results
 
 This is the browser client for the existing FastAPI football agent. Run the API
 on port 8000, then run `npm ci` and `npm run dev` in this directory. Open
@@ -32,15 +32,17 @@ public and embedded at build time. Never store API keys in frontend variables.
 5. The SSE parser keeps incomplete text until it has complete lines/events.
    It handles LF, CRLF, CR, comments, and multi-line `data` fields.
 6. `connected`, `tool_call`, and `tool_result` update the progress message.
-7. `final_answer` adds an assistant message. The answer arrives as a whole,
+   Structured SQL results are validated and stored on this request's assistant
+   message, deduplicated by tool-call ID. Each result gets a card, chart, or table.
+7. `final_answer` fills in that assistant message. The answer arrives as a whole,
    not token-by-token. LangChain text content blocks are supported as well.
 8. `complete` ends the successful request. HTTP errors, SSE errors, malformed
    events, and EOF without completion become visible failures.
 9. Cleanup releases the stream reader and re-enables the composer. Stop and
    unmounting cancel the browser request. There are no automatic retries.
 
-SQL tool payloads are not shown yet; tables and charts belong to Block 6. The
-backend may need additional work to stop model execution after a client aborts.
+SQL results now appear alongside the answer. The backend still needs additional
+work to stop model execution after a client aborts.
 
 ## State and limits
 

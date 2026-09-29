@@ -100,7 +100,9 @@ class ApiTests(unittest.TestCase):
             "connected", "tool_call", "tool_result", "final_answer", "complete",
         ])
         self.assertEqual(events[1][1], {"tools": ["execute_sql"]})
-        self.assertEqual(json.loads(events[2][1]["result"]), tool_result)
+        self.assertEqual(events[2][1], {
+            "tool_call_id": "test-query", "tool": "execute_sql", "result": tool_result,
+        })
         self.assertEqual(events[3][1], {"answer": "3 test matches."})
 
     def test_stream_failure_emits_error_without_success_event(self):
@@ -111,6 +113,36 @@ class ApiTests(unittest.TestCase):
         events = self.parse_events(response)
         self.assertEqual([name for name, _ in events], ["connected", "error"])
         self.assertIn("message", events[-1][1])
+
+    def test_stream_emits_every_tool_result_and_sanitizes_errors(self):
+        contents = [
+            json.dumps({"columns": ["count"], "rows": [{"count": 0}], "truncated": False}),
+            json.dumps({"error": "SQL failed at /private/path"}),
+            "not JSON",
+            json.dumps({"columns": [], "rows": [], "truncated": False}),
+        ]
+        self.agent.stream.return_value = iter([
+            {"tools": {"messages": [
+                ToolMessage(content=content, tool_call_id=f"query-{index}", name="execute_sql")
+                for index, content in enumerate(contents)
+            ]}},
+            {"agent": {"messages": [AIMessage(content="Finished.")]}},
+        ])
+        response = self.client.post("/chat/stream", json={"message": "Count matches"})
+        results = [data for name, data in self.parse_events(response) if name == "tool_result"]
+        self.assertEqual([item["tool_call_id"] for item in results], [f"query-{i}" for i in range(4)])
+        self.assertEqual(results[0]["result"]["rows"], [{"count": 0}])
+        self.assertIn("error", results[1]["result"])
+        self.assertIn("error", results[2]["result"])
+        self.assertEqual(results[3]["result"]["rows"], [])
+        self.assertNotIn("/private/path", response.text)
+
+    def test_invalid_tool_result_shapes_become_safe_errors(self):
+        for content in ['[]', '{}', '{"columns": ["x"], "rows": "bad", "truncated": false}',
+                        '{"columns": ["x"], "rows": [{"x": NaN}], "truncated": false}']:
+            with self.subTest(content=content):
+                payload = api.tool_result_payload(ToolMessage(content=content, tool_call_id="test"))
+                self.assertIn("error", payload["result"])
 
 
 if __name__ == "__main__":

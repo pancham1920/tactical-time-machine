@@ -42,6 +42,35 @@ def format_sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+def tool_result_payload(message) -> dict:
+    """Decode tool JSON at the HTTP boundary; never expose raw tool errors."""
+    try:
+        result = json.loads(message.content)
+        if not isinstance(result, dict) or "error" in result:
+            raise ValueError("Tool failed")
+        columns = result["columns"]
+        rows = result["rows"]
+        if (
+            not isinstance(columns, list)
+            or not all(isinstance(column, str) for column in columns)
+            or len(set(columns)) != len(columns)
+            or not isinstance(rows, list)
+            or not all(isinstance(row, dict) for row in rows)
+            or not isinstance(result.get("truncated"), bool)
+        ):
+            raise ValueError("Invalid result structure")
+        # Round-trip strictly: non-finite numbers are not valid browser JSON.
+        result = {"columns": columns, "rows": rows, "truncated": result["truncated"]}
+        json.dumps(result, allow_nan=False)
+    except (ValueError, TypeError, KeyError):
+        result = {"error": "This database query could not produce displayable results."}
+    return {
+        "tool_call_id": message.tool_call_id,
+        "tool": message.name or "execute_sql",
+        "result": result,
+    }
+
+
 async def stream_sse_events(message: str) -> AsyncIterator[str]:
     """Convert LangGraph updates into browser-readable SSE events."""
     yield format_sse_event("connected", {"message": "Agent started"})
@@ -49,15 +78,15 @@ async def stream_sse_events(message: str) -> AsyncIterator[str]:
     try:
         async for update in stream_agent_updates(message):
             for node_name, state_data in update.items():
+                if node_name == "tools":
+                    for tool_message in state_data["messages"]:
+                        yield format_sse_event("tool_result", tool_result_payload(tool_message))
+                    continue
                 last_message = state_data["messages"][-1]
 
                 if node_name == "agent" and last_message.tool_calls:
                     tool_names = [call["name"] for call in last_message.tool_calls]
                     yield format_sse_event("tool_call", {"tools": tool_names})
-                elif node_name == "tools":
-                    yield format_sse_event(
-                        "tool_result", {"result": last_message.content}
-                    )
                 elif node_name == "agent":
                     yield format_sse_event(
                         "final_answer", {"answer": last_message.content}

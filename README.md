@@ -6,8 +6,8 @@ read its results, and explain the answer. FastAPI exposes both a JSON response
 and a stream of tool activity and the final answer. A React chat interface shows
 the conversation and live progress in the browser.
 
-**Status:** Blocks 1–5 implemented as a local prototype. Charts, persistent
-conversations, and deployment are still planned. No hosted demo is currently
+**Status:** Blocks 1–6 implemented as a local prototype. Persistent
+conversations and deployment are still planned. No hosted demo is currently
 provided; the deployment target is a $0 proof of concept with free-tier limits.
 
 ## What is implemented
@@ -19,6 +19,8 @@ provided; the deployment target is a $0 proof of concept with free-tier limits.
 - Chat request validation and SSE events for tool calls, results, and answers.
 - A responsive React chat UI with suggested questions, progress, cancellation,
   and error recovery. Answers are displayed as plain text.
+- SQL-backed tables, numeric stat cards, and conservative category/value bar charts
+  with Recharts. Empty, failed, and truncated query results are clearly labelled.
 - Automated tests using synthetic SQLite data and mocked agent responses.
 
 The application uses downloaded data; it does not fetch live scores. Answers
@@ -140,8 +142,8 @@ the current API CORS configuration. Vite uses a strict port so a conflict
 fails clearly rather than silently moving to an unauthorized origin.
 
 The browser shows conversation history until the page reloads, but sends only
-the latest question. Agent memory across turns remains Block 8. Charts and
-SQL-result tables remain Block 6. See [frontend/README.md](frontend/README.md)
+the latest question. Agent memory across turns remains Block 8. Block 6 now
+displays SQL results alongside the answer. See [frontend/README.md](frontend/README.md)
 for the component layout and streaming design.
 
 ## Try the backend
@@ -170,7 +172,7 @@ event: tool_call
 data: {"tools": ["execute_sql"]}
 
 event: tool_result
-data: {"result": "{\"columns\":[\"matches\"],\"rows\":[{\"matches\":86983}],\"truncated\":false}"}
+data: {"tool_call_id":"example-count","tool":"execute_sql","result":{"columns":["matches"],"rows":[{"matches":86983}],"truncated":false}}
 
 event: final_answer
 data: {"answer": "There are 86,983 matches in the database."}
@@ -206,15 +208,16 @@ starts is an SSE `error` event rather than a new HTTP status.
 | --- | --- |
 | `connected` | `{"message":"Agent started"}`; stream opened, not a dependency health check. |
 | `tool_call` | `{"tools":["execute_sql"]}`; tools requested by Gemini. |
-| `tool_result` | `{"result":"..."}`; result is itself a JSON-encoded string. It may contain rows or a SQL error. |
+| `tool_result` | `{"tool_call_id":"...","tool":"execute_sql","result":{...}}`; result contains columns, rows, and truncated, or a sanitized error. One event per tool message. |
 | `final_answer` | `{"answer":"..."}`; final model output. |
 | `error` | `{"message":"..."}`; workflow failed; no `complete` follows. |
 | `complete` | `{}`; workflow ended successfully, not a guarantee of answer correctness. |
 
 Use `fetch()` with a streaming response reader for this POST endpoint; native
 browser `EventSource` does not send this JSON POST request. Each SSE event ends
-with a blank line. Parse the event's `data` JSON, then parse `result` separately
-for a `tool_result`. Local CORS currently permits `http://localhost:5173`.
+with a blank line. Parse the event's `data` JSON once; `result` is already an
+object. This replaces Block 5's nested JSON-string contract: restart the backend
+and refresh the frontend together. Local CORS permits `http://localhost:5173`.
 
 Each request starts a new conversation. State is retained inside that graph run,
 but no session history is saved between requests.
@@ -260,10 +263,10 @@ interrupted streams, cancellation, text escaping, and responsive layout. No
 Gemini calls or real football data are used. A live Gemini-backed browser
 question is a separate manual integration check.
 
-Verification for this implementation: all 16 frontend unit tests and the
-production build passed. Browser tests are provided but have not passed locally:
-the sandbox prevented Chrome from launching, and permission to run it outside
-the sandbox was declined. Live Gemini-backed browser integration remains unverified.
+Block 5 was manually verified in Chrome by the project owner. For Block 6,
+14 Python tests, 22 frontend unit tests, 16 desktop/mobile Chrome browser tests,
+and the production build pass. Browser tests use mocked responses; live Gemini-backed Block 6 verification
+is a separate manual check.
 
 ## Source layout
 
@@ -290,7 +293,7 @@ DATA_SOURCES.md          Dataset provenance and preparation
 | 3 | SQL tool and agent/tool loop | Implemented with basic guards |
 | 4 | FastAPI JSON and SSE endpoints | Implemented prototype |
 | 5 | React, Vite, and Tailwind chat UI | Implemented; automated browser checks use mocked responses |
-| 6 | Tables, stat cards, and charts | Planned |
+| 6 | Tables, stat cards, and charts | Implemented; live-data review pending |
 | 7 | Richer tactical commentary | Planned; basic analyst prompt exists |
 | 8 | Persistent conversation memory | Planned |
 | 9 | Explicit, bounded SQL correction/retry policy | Planned; tool errors already return to the model |
@@ -305,8 +308,8 @@ DATA_SOURCES.md          Dataset provenance and preparation
   SSE errors currently expose exception text. Keep this prototype local until
   those controls are implemented.
 - The async streaming wrapper currently consumes a synchronous graph iterator,
-  which can block other requests. Concurrency, cancellation, and multi-tool SSE
-  handling need further work; only the last tool message in an update is emitted.
+  which can block other requests. Concurrency and backend cancellation need
+  further work. Every tool message is now emitted separately.
 - Schema instructions are a hand-maintained subset of the database. Missing
   data and model mistakes can still produce incomplete or incorrect answers.
 - Python dependencies are not pinned yet. Frontend dependencies have exact
