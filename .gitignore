@@ -32,3 +32,9 @@ htmlcov/
 # Machine-local files and logs.
 .DS_Store
 *.log
+
+# Frontend dependencies, builds, and browser-test artifacts.
+node_modules/
+/frontend/dist/
+/frontend/test-results/
+/frontend/playwright-report/

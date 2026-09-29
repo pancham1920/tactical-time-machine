@@ -1,13 +1,14 @@
 # Tactical Time-Machine
 
-An AI football analytics backend that answers natural-language questions using
+An AI football analytics application that answers natural-language questions using
 Gemini, LangGraph, and a local SQLite database. The agent can request a SQL tool,
 read its results, and explain the answer. FastAPI exposes both a JSON response
-and a stream of tool activity and the final answer.
+and a stream of tool activity and the final answer. A React chat interface shows
+the conversation and live progress in the browser.
 
-**Status:** working backend prototype (Blocks 1–4 implemented). The React UI,
-charts, persistent conversations, and deployment are still planned. No hosted
-demo is currently provided.
+**Status:** Blocks 1–5 implemented as a local prototype. Charts, persistent
+conversations, and deployment are still planned. No hosted demo is currently
+provided; the deployment target is a $0 proof of concept with free-tier limits.
 
 ## What is implemented
 
@@ -16,6 +17,8 @@ demo is currently provided.
 - A Gemini → SQL tool → Gemini loop orchestrated by LangGraph.
 - Basic SQL validation, structured errors, and a maximum of 100 returned rows.
 - Chat request validation and SSE events for tool calls, results, and answers.
+- A responsive React chat UI with suggested questions, progress, cancellation,
+  and error recovery. Answers are displayed as plain text.
 - Automated tests using synthetic SQLite data and mocked agent responses.
 
 The application uses downloaded data; it does not fetch live scores. Answers
@@ -25,7 +28,7 @@ depend on the coverage and quality of the supplied dataset.
 
 ```mermaid
 flowchart LR
-    Client[API client / future React UI] --> API[FastAPI]
+    Client[React chat UI / API client] --> API[FastAPI]
     API --> Agent[LangGraph agent]
     Agent <--> Gemini[Google Gemini]
     Agent --> Tool[SQL tool: validation and row cap]
@@ -40,12 +43,13 @@ flowchart LR
 
 | Layer | Technology |
 | --- | --- |
-| Language | Python; SQL for database queries |
+| Language | Python, JavaScript/JSX, CSS, SQL |
+| Frontend | React, Vite, Tailwind CSS |
 | AI and orchestration | Google Gemini, LangChain, LangGraph |
 | Data | pandas, SQLAlchemy, SQLite |
 | API | FastAPI, Pydantic, Uvicorn |
 | Transport | HTTP JSON and Server-Sent Events (SSE) |
-| Tests | unittest, FastAPI TestClient / HTTPX |
+| Tests | unittest, FastAPI TestClient / HTTPX, Node test runner, Playwright |
 
 SQLite keeps the local data setup simple. `agent_match_view` reduces the joins
 the model needs to generate. LangGraph makes the tool loop explicit. SSE fits
@@ -109,6 +113,36 @@ python -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8000
 The API runs at `http://127.0.0.1:8000`. Interactive FastAPI documentation is
 available at `http://127.0.0.1:8000/docs`. `/health` does not require a key or a
 seeded database; football questions do.
+
+### Start the frontend
+
+Use Node.js 22.12+ (verified locally with 22.14) or another version supported
+by `frontend/package.json`. Keep the API running and open a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Visit **http://localhost:5173**. Ask a full question, or choose a suggested one.
+You should see progress followed by the final answer. Use Enter to submit and
+Shift + Enter for a new line. Stop cancels the browser request; it does not
+guarantee that an already-running backend/model operation is cancelled.
+
+The API defaults to `http://127.0.0.1:8000`. To override it, copy
+`frontend/.env.example` to `frontend/.env` and edit `VITE_API_BASE_URL`, then
+restart Vite. **Frontend environment variables are public: never place a
+Gemini key in them.** Keep the real key only in the root backend `.env`.
+
+Use `localhost:5173` for the frontend because that exact origin is allowed by
+the current API CORS configuration. Vite uses a strict port so a conflict
+fails clearly rather than silently moving to an unauthorized origin.
+
+The browser shows conversation history until the page reloads, but sends only
+the latest question. Agent memory across turns remains Block 8. Charts and
+SQL-result tables remain Block 6. See [frontend/README.md](frontend/README.md)
+for the component layout and streaming design.
 
 ## Try the backend
 
@@ -201,6 +235,36 @@ caps, API input validation, response handling, and SSE success/error sequences.
 HTTP tests use [FastAPI's documented TestClient](https://fastapi.tiangolo.com/tutorial/testing/).
 They do not measure model answer accuracy or network streaming latency.
 
+Frontend parser/API tests and production build:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+Browser interaction tests (desktop and mobile viewports):
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+Alternatively, with Google Chrome already installed, skip the download and use
+`PLAYWRIGHT_CHANNEL=chrome npm run test:e2e`.
+
+Browser tests start Vite automatically and mock the API responses. They test
+submitting questions, preventing duplicate requests, recovery after errors,
+interrupted streams, cancellation, text escaping, and responsive layout. No
+Gemini calls or real football data are used. A live Gemini-backed browser
+question is a separate manual integration check.
+
+Verification for this implementation: all 16 frontend unit tests and the
+production build passed. Browser tests are provided but have not passed locally:
+the sandbox prevented Chrome from launching, and permission to run it outside
+the sandbox was declined. Live Gemini-backed browser integration remains unverified.
+
 ## Source layout
 
 ```text
@@ -211,6 +275,8 @@ src/agents/graph.py     Agent/tool graph and message state
 src/tools/db_tools.py   SQL validation, execution, and JSON formatting
 src/api/main.py         HTTP endpoints and SSE formatting
 tests/                  Offline SQL and API tests
+frontend/src/           React UI, HTTP client, and SSE parser
+frontend/tests/         Parser/API tests and browser interaction tests
 main.py                 Terminal agent smoke test
 DATA_SOURCES.md          Dataset provenance and preparation
 ```
@@ -223,7 +289,7 @@ DATA_SOURCES.md          Dataset provenance and preparation
 | 2 | Gemini client and LangGraph agent | Implemented |
 | 3 | SQL tool and agent/tool loop | Implemented with basic guards |
 | 4 | FastAPI JSON and SSE endpoints | Implemented prototype |
-| 5 | React, Vite, and Tailwind chat UI | Planned |
+| 5 | React, Vite, and Tailwind chat UI | Implemented; automated browser checks use mocked responses |
 | 6 | Tables, stat cards, and charts | Planned |
 | 7 | Richer tactical commentary | Planned; basic analyst prompt exists |
 | 8 | Persistent conversation memory | Planned |
@@ -243,8 +309,9 @@ DATA_SOURCES.md          Dataset provenance and preparation
   handling need further work; only the last tool message in an update is emitted.
 - Schema instructions are a hand-maintained subset of the database. Missing
   data and model mistakes can still produce incomplete or incorrect answers.
-- Dependencies are not pinned yet. The tests verify code behavior with the local
-  environment; reproducible dependency locking and CI remain follow-up work.
+- Python dependencies are not pinned yet. Frontend dependencies have exact
+  versions and a committed npm lockfile. Python dependency locking and CI remain
+  follow-up work.
 
 ## Data and licensing
 
