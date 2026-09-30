@@ -24,7 +24,7 @@ def call_model(state: AgentState):
     llm = get_llm_client().bind_tools(TOOLS)
     messages = state["messages"]
 
-    # Prepend the structural prompt instructions to ensure rules are enforced
+    # Provide schema and analyst guidance on every call; prompts are not enforcement.
     system_message = SystemMessage(content=SYSTEM_PROMPT)
     response = llm.invoke([system_message] + list(messages))
 

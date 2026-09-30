@@ -238,6 +238,15 @@ caps, API input validation, response handling, and SSE success/error sequences.
 HTTP tests use [FastAPI's documented TestClient](https://fastapi.tiangolo.com/tutorial/testing/).
 They do not measure model answer accuracy or network streaming latency.
 
+Analyst prompt tests also verify that the schema, evidence rules, and response
+guidance reach the model on initial and post-tool calls without altering message
+history. These are wiring/regression tests, not proof of model compliance.
+`tests/fixtures/analyst_review_cases.json` contains eight review scenarios and
+acceptance criteria. Normal questions can be reviewed through the app; the two
+`controlled_tool_result` cases require a controlled model-evaluation setup, not
+pasting fake tool data into the user input. The file is a review checklist, not
+an automated live evaluator. Live evaluation is opt-in and may consume API quota.
+
 Frontend parser/API tests and production build:
 
 ```bash
@@ -294,7 +303,7 @@ DATA_SOURCES.md          Dataset provenance and preparation
 | 4 | FastAPI JSON and SSE endpoints | Implemented prototype |
 | 5 | React, Vite, and Tailwind chat UI | Implemented; automated browser checks use mocked responses |
 | 6 | Tables, stat cards, and charts | Implemented; live-data review pending |
-| 7 | Richer tactical commentary | Planned; basic analyst prompt exists |
+| 7 | Richer tactical commentary | Prompt and offline tests implemented; live answer-quality review pending |
 | 8 | Persistent conversation memory | Planned |
 | 9 | Explicit, bounded SQL correction/retry policy | Planned; tool errors already return to the model |
 | 10 | Deployment and integration testing | Planned |
