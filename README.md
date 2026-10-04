@@ -6,8 +6,8 @@ read its results, and explain the answer. FastAPI exposes both a JSON response
 and a stream of tool activity and the final answer. A React chat interface shows
 the conversation and live progress in the browser.
 
-**Status:** Blocks 1–6 implemented as a local prototype. Persistent
-conversations and deployment are still planned. No hosted demo is currently
+**Status:** Blocks 1–8 implemented as a local prototype, including tab refresh
+history restoration. Deployment is not implemented. No hosted demo is currently
 provided; the deployment target is a $0 proof of concept with free-tier limits.
 
 ## What is implemented
@@ -141,9 +141,10 @@ Use `localhost:5173` for the frontend because that exact origin is allowed by
 the current API CORS configuration. Vite uses a strict port so a conflict
 fails clearly rather than silently moving to an unauthorized origin.
 
-The browser shows conversation history until the page reloads, but sends only
-the latest question. Agent memory across turns remains Block 8. Block 6 now
-displays SQL results alongside the answer. See [frontend/README.md](frontend/README.md)
+The browser sends only the latest question plus a conversation UUID. The backend
+restores recent context from SQLite checkpoints. Refresh reloads this tab's
+saved messages and query results. New chat starts fresh without deleting old checkpoints. SQL results appear
+alongside the answer. See [frontend/README.md](frontend/README.md)
 for the component layout and streaming design.
 
 ## Try the backend
@@ -166,7 +167,7 @@ Example from a previously tested local snapshot (counts depend on your data):
 
 ```text
 event: connected
-data: {"message": "Agent started"}
+data: {"message": "Agent started", "conversation_id": "9ac12a9b-d2df-4fce-bc53-c037f45b7626"}
 
 event: tool_call
 data: {"tools": ["execute_sql"]}
@@ -190,23 +191,29 @@ query aliases, wording, and the number of tool calls may vary.
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /health` | Returns `{"status":"ok"}`; checks HTTP liveness only. |
-| `POST /chat` | Runs the graph and returns `{"answer":"..."}`. |
+| `GET /conversations/{uuid}` | Returns a UI-safe projection of saved messages and SQL results without invoking Gemini. Unknown IDs return 404; busy threads return 409. |
+| `POST /chat` | Runs the graph and returns `{"answer":"...","conversation_id":"..."}`. |
 | `POST /chat/stream` | Runs the graph and returns `text/event-stream`. |
 
 Both chat endpoints accept:
 
 ```json
-{"message":"How many matches are in the database?"}
+{"message":"How many matches are in the database?","conversation_id":"9ac12a9b-d2df-4fce-bc53-c037f45b7626"}
 ```
 
 `message` must be a string of 1–2,000 characters. Invalid bodies receive HTTP
-422. Whitespace-only strings are currently accepted. A failed `/chat` agent run
+422. Whitespace-only strings and malformed conversation UUIDs are rejected.
+The conversation ID is optional: omission generates a fresh UUID, and an unknown
+valid UUID starts a new thread. Reuse the returned ID for follow-ups. A failed `/chat` agent run
 returns HTTP 502 with a generic message. A streaming failure after the response
-starts is an SSE `error` event rather than a new HTTP status.
+starts is an SSE `error` event rather than a new HTTP status. Concurrent requests
+for the same conversation receive HTTP 409 before a response stream starts.
+An oversized/invalid current exchange returns HTTP 413 on `/chat` or an SSE
+`error` with `code: "context_limit"` on `/chat/stream`; start fresh or narrow the question.
 
 | SSE event | Data shape / meaning |
 | --- | --- |
-| `connected` | `{"message":"Agent started"}`; stream opened, not a dependency health check. |
+| `connected` | `{"message":"Agent started","conversation_id":"..."}`; resolved thread ID, not a dependency health check. |
 | `tool_call` | `{"tools":["execute_sql"]}`; tools requested by Gemini. |
 | `tool_result` | `{"tool_call_id":"...","tool":"execute_sql","result":{...}}`; result contains columns, rows, and truncated, or a sanitized error. One event per tool message. |
 | `final_answer` | `{"answer":"..."}`; final model output. |
@@ -219,8 +226,49 @@ with a blank line. Parse the event's `data` JSON once; `result` is already an
 object. This replaces Block 5's nested JSON-string contract: restart the backend
 and refresh the frontend together. Local CORS permits `http://localhost:5173`.
 
-Each request starts a new conversation. State is retained inside that graph run,
-but no session history is saved between requests.
+### Conversation memory (local prototype)
+
+API startup opens a LangGraph async SQLite saver at `conversation_memory.db`,
+separate from football data. The saver closes on shutdown; the file and its
+SQLite sidecars are ignored by Git. Checkpoints include user messages, model
+messages and tool results. They survive a backend restart when the client reuses
+the same conversation ID. The terminal smoke test remains nonpersistent.
+
+Run exactly **one backend worker/process** against this prototype. An in-process
+guard serializes each conversation by rejecting overlap (409); it does not
+coordinate multiple workers. Graph/model execution and checkpoint access are
+asynchronous; SQL tools may still finish work already dispatched to a thread
+after cancellation. No automatic HTTP retries or request deduplication are added.
+
+`AGENT_CONTEXT_MAX_CHARS` defaults to 64000. This is an approximate serialized
+character budget, **not** a Gemini token count. The model receives the system
+prompt, the current complete tool exchange, and a recent contiguous suffix of
+complete turns; 8000 characters are reserved for tool/schema overhead. An older
+interrupted turn ends that suffix. Oversized current exchanges fail explicitly
+rather than splitting tool-call/result pairs. Stored history is not trimmed;
+checkpoint size grows until a separate retention/deletion policy is implemented.
+
+The frontend saves only its active UUID in `sessionStorage`, not message bodies.
+Refresh restores this tab's history through `GET /conversations/{uuid}` before
+enabling the composer. The endpoint uses the same busy guard as chat writes and
+returns `Cache-Control: no-store`. It projects user text, final assistant text,
+structured query results, and incomplete-response status; raw graph metadata,
+system messages, intermediate tool-call arguments and thinking blocks are excluded.
+Missing history starts a new chat with an explanation. Network/storage failures
+leave input blocked with Retry and New chat options; they never silently reuse
+unseen context. A still-running chat may return 409 until its operation stops.
+
+New chat clears the screen/draft and replaces the stored ID; it does not delete
+old checkpoints and is disabled during an active chat request. It can cancel a
+pending history load. Storage-disabled browsers can chat but show a warning that
+refresh restoration is unavailable. Session storage is tab-scoped; a duplicated
+tab may inherit its ID, so the backend busy guard remains necessary. There is no
+saved-chat list, cross-device history, pagination, or deletion interface yet.
+
+**Privacy:** conversation IDs are not authentication. Anyone with an ID and API
+access could read its history or append to that thread. Keep the
+app local until ownership checks, access control and retention are implemented.
+Checkpoints are not encrypted; don't submit sensitive information to this demo.
 
 ## Automated tests
 
@@ -272,10 +320,17 @@ interrupted streams, cancellation, text escaping, and responsive layout. No
 Gemini calls or real football data are used. A live Gemini-backed browser
 question is a separate manual integration check.
 
-Block 5 was manually verified in Chrome by the project owner. For Block 6,
-14 Python tests, 22 frontend unit tests, 16 desktop/mobile Chrome browser tests,
-and the production build pass. Browser tests use mocked responses; live Gemini-backed Block 6 verification
-is a separate manual check.
+Block 5 was manually verified in Chrome by the project owner. Automated memory
+tests use actual temporary SQLite checkpoints and mocked model responses to check
+reopen/restart persistence, isolation, tool evidence, context selection and busy
+guard cleanup. Browser tests mock HTTP responses. Live Gemini follow-up quality
+remains a separate manual check: ask for a team's five recent matches, then ask
+"How many of those did they win?" without repeating the team.
+
+Current verification: 40 Python tests, 28 frontend unit tests, 24 desktop/mobile
+Chrome browser tests, and the frontend production build passed without live
+Gemini calls. The Python suite emits an existing TestClient/httpx deprecation
+warning; migrating that test dependency is separate from conversation memory.
 
 ## Source layout
 
@@ -284,6 +339,9 @@ scripts/seed_db.py       CSV import, indexes, and match view
 src/agents/config.py    Gemini client configuration
 src/agents/prompts.py   Analyst instructions and known schema
 src/agents/graph.py     Agent/tool graph and message state
+src/agents/memory.py    Persistent checkpoint connection lifecycle
+src/agents/context.py   Tool-safe bounded model context
+src/agents/history.py   UI-safe checkpoint history projection
 src/tools/db_tools.py   SQL validation, execution, and JSON formatting
 src/api/main.py         HTTP endpoints and SSE formatting
 tests/                  Offline SQL and API tests
@@ -304,7 +362,7 @@ DATA_SOURCES.md          Dataset provenance and preparation
 | 5 | React, Vite, and Tailwind chat UI | Implemented; automated browser checks use mocked responses |
 | 6 | Tables, stat cards, and charts | Implemented; live-data review pending |
 | 7 | Richer tactical commentary | Prompt and offline tests implemented; live answer-quality review pending |
-| 8 | Persistent conversation memory | Planned |
+| 8 | Persistent conversation memory | Agent memory and tab-refresh history restoration implemented; live review pending |
 | 9 | Explicit, bounded SQL correction/retry policy | Planned; tool errors already return to the model |
 | 10 | Deployment and integration testing | Planned |
 
@@ -313,12 +371,11 @@ DATA_SOURCES.md          Dataset provenance and preparation
 - SQL protection uses keyword checks, not a SQL parser or a database-enforced
   read-only connection. There is no query timeout or table allowlist. The row
   cap limits returned data, not query execution cost.
-- The API has no authentication or rate limiting. CORS is not authorization.
-  SSE errors currently expose exception text. Keep this prototype local until
-  those controls are implemented.
-- The async streaming wrapper currently consumes a synchronous graph iterator,
-  which can block other requests. Concurrency and backend cancellation need
-  further work. Every tool message is now emitted separately.
+- The API has no authentication or rate limiting. CORS and conversation UUIDs
+  are not authorization. Keep this prototype local until access controls exist.
+- The API supports a single worker, not distributed conversation coordination.
+  Cancellation cannot guarantee termination of an already-running SQL thread or
+  remote model operation. Every tool message is emitted separately.
 - Schema instructions are a hand-maintained subset of the database. Missing
   data and model mistakes can still produce incomplete or incorrect answers.
 - Python dependencies are not pinned yet. Frontend dependencies have exact

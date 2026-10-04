@@ -32,12 +32,13 @@ test('posts only the latest question and decodes split UTF-8 correctly', async t
   const events = [];
   await streamChat({
     message: '  Count matches  ', baseUrl: 'http://localhost:8000/',
+    conversationId: '12345678-1234-4234-8234-123456789012',
     onEvent: value => events.push(value),
   });
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, 'http://localhost:8000/chat/stream');
   assert.equal(options.method, 'POST');
-  assert.deepEqual(JSON.parse(options.body), { message: 'Count matches' });
+  assert.deepEqual(JSON.parse(options.body), { message: 'Count matches', conversation_id: '12345678-1234-4234-8234-123456789012' });
   assert.deepEqual(events.map(item => item.event), [
     'connected', 'tool_call', 'tool_result', 'final_answer', 'complete',
   ]);
@@ -109,4 +110,16 @@ test('extracts visible text blocks without rendering reasoning or HTML', () => {
   assert.equal(answerText([{ type: 'thinking', text: 'hidden' }, { type: 'text', text: 'Answer' }]), 'Answer');
   assert.equal(answerText('<script>example</script>'), '<script>example</script>');
   assert.throws(() => answerText([]), /no readable answer/);
+});
+
+test('busy conversations produce an actionable error without automatic retry', async t => {
+  const mocked = t.mock.method(globalThis, 'fetch', async () => new Response('private detail', { status: 409 }));
+  await assert.rejects(streamChat({ message: 'Hi', onEvent() {} }), /still busy/);
+  assert.equal(mocked.mock.callCount(), 1);
+});
+
+test('context-limit events give safe actionable advice', async t => {
+  mockStream(t, event('error', { code: 'context_limit', message: '/private/path' }));
+  await assert.rejects(streamChat({ message: 'Hi', onEvent() {} }), error =>
+    error.message.includes('new chat') && !error.message.includes('/private'));
 });

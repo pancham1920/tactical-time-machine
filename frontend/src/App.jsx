@@ -3,6 +3,7 @@ import { streamChat } from './api/chat.js';
 import ChatInput from './components/ChatInput.jsx';
 import ChatMessage from './components/ChatMessage.jsx';
 import { updateAssistant } from './results.js';
+import { CONVERSATION_KEY, initialConversation, loadConversation } from './api/history.js';
 
 const SUGGESTIONS = [
   { label: 'The big picture', question: 'How many matches are in the database?' },
@@ -12,11 +13,57 @@ const SUGGESTIONS = [
 
 export default function App() {
   const [messages, setMessages] = useState([]);
+  const [initial] = useState(initialConversation);
+  const [conversationId, setConversationId] = useState(initial.id);
+  const [restoreNeeded, setRestoreNeeded] = useState(initial.restore);
+  const [historyStatus, setHistoryStatus] = useState(initial.restore ? 'loading' : 'ready');
+  const [historyAttempt, setHistoryAttempt] = useState(0);
+  const [storageWarning, setStorageWarning] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
   const controllerRef = useRef(null);
+  const historyControllerRef = useRef(null);
   const scrollEnd = useRef(null);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(CONVERSATION_KEY, conversationId); }
+    catch { setStorageWarning(true); }
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!restoreNeeded) return;
+    const controller = new AbortController();
+    historyControllerRef.current = controller;
+    setHistoryStatus('loading');
+    setError(null);
+    loadConversation(conversationId, { signal: controller.signal }).then(history => {
+      if (controller.signal.aborted) return;
+      setMessages(history ?? []);
+      if (history === null) {
+        setConversationId(crypto.randomUUID());
+        setError('Saved chat was not found. A new conversation has been started.');
+      }
+      setHistoryStatus('ready');
+      setRestoreNeeded(false);
+    }).catch(failure => {
+      if (controller.signal.aborted) return;
+      setHistoryStatus('error');
+      setError(failure.message);
+    });
+    return () => controller.abort();
+  }, [conversationId, restoreNeeded, historyAttempt]);
+
+  function startNewChat() {
+    if (controllerRef.current) return;
+    historyControllerRef.current?.abort();
+    setRestoreNeeded(false);
+    setHistoryStatus('ready');
+    setConversationId(crypto.randomUUID());
+    setMessages([]);
+    setError(null);
+    setProgress('');
+  }
 
   useEffect(() => () => {
     controllerRef.current?.abort();
@@ -30,7 +77,7 @@ export default function App() {
   async function handleSend(message) {
     const question = message.trim();
     // The ref closes the gap before React has rendered the disabled button.
-    if (!question || controllerRef.current) return;
+    if (!question || controllerRef.current || restoreNeeded || historyStatus !== 'ready') return;
     if (question.length > 2000) {
       setError('Keep your question to 2,000 characters or fewer.');
       return;
@@ -50,6 +97,7 @@ export default function App() {
     try {
       await streamChat({
         message: question,
+        conversationId,
         signal: controller.signal,
         onEvent: ({ event, data }) => {
           if (controllerRef.current !== controller) return;
@@ -112,7 +160,7 @@ export default function App() {
         <header className="topbar">
           <span className="mobile-brand">Tactical Time-Machine</span>
           <span className="desktop-breadcrumb">Football explorer <span>/</span> Ask the analyst</span>
-          <span className="header-tag">Historical data</span>
+          <button className="stop-button" onClick={startNewChat} disabled={isStreaming}>New chat</button>
         </header>
 
         <main className="conversation-scroll" id="conversation">
@@ -124,7 +172,7 @@ export default function App() {
                 <p className="welcome-description">Explore matches, players, and market values with your football analyst. Ask a question. Let the data do the talking.</p>
                 <div className="suggestions">
                   {SUGGESTIONS.map(({ label, question }, index) => (
-                    <button key={label} className="suggestion" onClick={() => handleSend(question)} disabled={isStreaming}>
+                    <button key={label} className="suggestion" onClick={() => handleSend(question)} disabled={isStreaming || restoreNeeded}>
                       <span className="suggestion-number">0{index + 1}</span>
                       <span className="suggestion-label">{label}</span>
                       <span className="suggestion-question">{question}</span>
@@ -138,6 +186,8 @@ export default function App() {
                 {messages.map(message => <ChatMessage key={message.id} message={message} />)}
               </section>
             )}
+            {historyStatus === 'loading' && <p role="status" className="result-note">Loading saved conversation…</p>}
+            {historyStatus === 'error' && <button className="stop-button" onClick={() => setHistoryAttempt(value => value + 1)}>Retry loading history</button>}
             {isStreaming && (
               <div className="progress-row">
                 <p role="status"><span className="progress-dot" aria-hidden="true" />{progress}</p>
@@ -151,8 +201,9 @@ export default function App() {
 
         <footer className="composer-area">
           <div className="composer-inner">
-            <ChatInput disabled={isStreaming} onSend={handleSend} />
-            <p className="session-note">Each question is independent. History stays on this page only; the agent does not remember earlier questions yet.</p>
+            <ChatInput key={conversationId} disabled={isStreaming || restoreNeeded} onSend={handleSend} />
+            <p className="session-note">Refresh restores this tab’s saved chat. New chat starts fresh without deleting old chats. Follow-ups use recent context.</p>
+            {storageWarning && <p className="result-warning">Browser storage is unavailable; this chat cannot be restored automatically after refresh.</p>}
           </div>
         </footer>
       </div>

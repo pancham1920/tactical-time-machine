@@ -1,11 +1,13 @@
 from typing import Annotated, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.config import get_llm_client
+from src.agents.context import context_budget, select_model_messages
 from src.agents.prompts import SYSTEM_PROMPT
 from src.tools.db_tools import execute_sql
 
@@ -22,12 +24,21 @@ class AgentState(TypedDict):
 # 2. Define the Execution Node
 def call_model(state: AgentState):
     llm = get_llm_client().bind_tools(TOOLS)
-    messages = state["messages"]
+    response = llm.invoke(model_messages(state))
 
-    # Provide schema and analyst guidance on every call; prompts are not enforcement.
-    system_message = SystemMessage(content=SYSTEM_PROMPT)
-    response = llm.invoke([system_message] + list(messages))
+    return {"messages": [response]}
 
+
+def model_messages(state: AgentState):
+    # Reserve room for the system prompt and tool schemas/serialization overhead.
+    remaining = context_budget() - len(SYSTEM_PROMPT) - 8000
+    messages = select_model_messages(state["messages"], remaining)
+    return [SystemMessage(content=SYSTEM_PROMPT), *messages]
+
+
+async def acall_model(state: AgentState):
+    llm = get_llm_client().bind_tools(TOOLS)
+    response = await llm.ainvoke(model_messages(state))
     return {"messages": [response]}
 
 
@@ -43,24 +54,18 @@ def should_continue(state: AgentState):
     return "end"
 
 
-# 4. Construct and Compile the State Machine Structure
-workflow = StateGraph(AgentState)
+def build_agent(checkpointer=None):
+    workflow = StateGraph(AgentState)
+    # The API uses the async implementation; the CLI can still invoke synchronously.
+    workflow.add_node("agent", RunnableLambda(call_model, afunc=acall_model))
+    workflow.add_node("tools", ToolNode(TOOLS))
+    workflow.set_entry_point("agent")
+    workflow.add_conditional_edges(
+        "agent", should_continue, {"continue": "tools", "end": END},
+    )
+    workflow.add_edge("tools", "agent")
+    return workflow.compile(checkpointer=checkpointer)
 
-# Register our agent execution node
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", ToolNode(TOOLS))
-workflow.set_entry_point("agent")
 
-# Set up routing conditional paths
-workflow.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        "continue": "tools",
-        "end": END,
-    },
-)
-workflow.add_edge("tools", "agent")
-
-# Compile graph app execution target
-agent_app = workflow.compile()
+# Nonpersistent graph for the CLI smoke test; API owns its persistent instance.
+agent_app = build_agent()

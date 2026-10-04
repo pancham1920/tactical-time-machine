@@ -64,7 +64,7 @@ test('sends a question, prevents duplicate submission, and renders the answer', 
   const gate = new Promise(resolve => { release = resolve; });
   await page.route('**/chat/stream', async route => {
     requests += 1;
-    expect(route.request().postDataJSON()).toEqual({ message: 'Count the matches' });
+    expect(route.request().postDataJSON()).toEqual({ message: 'Count the matches', conversation_id: expect.any(String) });
     await gate;
     await route.fulfill({ contentType: 'text/event-stream', body: success });
   });
@@ -79,6 +79,7 @@ test('sends a question, prevents duplicate submission, and renders the answer', 
   await expect(input).toBeDisabled();
   await expect(send).toBeDisabled();
   await expect(page.getByRole('status')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeDisabled();
   release();
   await expect(page.getByText('There are 3 test matches.', { exact: true })).toBeVisible();
   await expect(input).toBeEnabled();
@@ -86,6 +87,102 @@ test('sends a question, prevents duplicate submission, and renders the answer', 
   await expect(page.getByRole('status')).toHaveCount(0);
   expect(requests).toBe(1);
   await expect(page.locator('.stat-card dd')).toHaveText('3');
+});
+
+test('follow-ups reuse the ID, New chat resets, refresh restores', async ({ page }) => {
+  const bodies = [];
+  await page.route('**/conversations/*', route => route.fulfill({ json: {
+    conversation_id: bodies.at(-1).conversation_id,
+    messages: [
+      { id: 'saved-user', role: 'user', content: 'New question' },
+      { id: 'saved-assistant', role: 'assistant', content: 'Saved answer', status: 'complete', results: [
+        { tool_call_id: 'q1', tool: 'execute_sql', result: { columns: ['matches'], rows: [{ matches: 3 }], truncated: false } },
+      ] },
+    ],
+  } }));
+  await page.route('**/chat/stream', route => {
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill({ contentType: 'text/event-stream', body: success });
+  });
+  await page.goto('/');
+  async function ask(text) {
+    const input = page.getByRole('textbox');
+    await input.fill(text);
+    await input.press('Enter');
+    await expect(input).toBeEnabled();
+  }
+  await ask('Show Arsenal');
+  await expect(page.locator('.message-assistant')).toHaveCount(1);
+  await ask('How many did they win?');
+  await expect(page.locator('.message-assistant')).toHaveCount(2);
+  expect(bodies[0].conversation_id).toBe(bodies[1].conversation_id);
+  expect(bodies[1].message).toBe('How many did they win?');
+  expect(Object.keys(bodies[1]).sort()).toEqual(['conversation_id', 'message']);
+  await page.getByRole('textbox').fill('Unsubmitted draft');
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.locator('.message')).toHaveCount(0);
+  await expect(page.getByRole('textbox')).toHaveValue('');
+  await ask('New question');
+  await expect(page.locator('.message-assistant')).toHaveCount(1);
+  expect(bodies[2].conversation_id).not.toBe(bodies[0].conversation_id);
+  await page.reload();
+  await expect(page.getByText('Saved answer', { exact: true })).toBeVisible();
+  await expect(page.locator('.stat-card dd')).toHaveText('3');
+  await ask('After refresh');
+  await expect(page.locator('.message-assistant')).toHaveCount(2);
+  expect(bodies[3].conversation_id).toBe(bodies[2].conversation_id);
+});
+
+test('history failures block sending, retry restores charts and incomplete responses', async ({ page }) => {
+  const id = '12345678-1234-4234-8234-123456789012';
+  await page.addInitScript(value => sessionStorage.setItem('football-agent.conversation.v1', value), id);
+  let fail = true;
+  await page.route('**/conversations/*', route => route.fulfill(fail
+    ? { status: 503, body: 'private storage path' }
+    : { json: { conversation_id: id, messages: [
+      { id: 'u', role: 'user', content: 'Compare players' },
+      { id: 'a', role: 'assistant', content: '', status: 'error', results: [
+        { tool_call_id: 'q', tool: 'execute_sql', result: { columns: ['name', 'goals'], rows: [{ name: 'A', goals: 2 }, { name: 'B', goals: 1 }], truncated: false } },
+      ] },
+    ] } }));
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('Could not load');
+  await expect(page.getByRole('textbox')).toBeDisabled();
+  await expect(page.getByRole('alert')).not.toContainText('private');
+  fail = false;
+  await page.getByRole('button', { name: 'Retry loading history' }).click();
+  await expect(page.locator('.result-chart svg')).toBeVisible();
+  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByText(/Response incomplete/)).toBeVisible();
+  await expect(page.getByRole('textbox')).toBeEnabled();
+});
+
+test('missing saved history starts a new conversation with an explanation', async ({ page }) => {
+  const id = '12345678-1234-4234-8234-123456789012';
+  await page.addInitScript(value => sessionStorage.setItem('football-agent.conversation.v1', value), id);
+  await page.route('**/conversations/*', route => route.fulfill({ status: 404, body: '' }));
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('Saved chat was not found');
+  await expect(page.getByRole('textbox')).toBeEnabled();
+  expect(await page.evaluate(() => sessionStorage.getItem('football-agent.conversation.v1'))).not.toBe(id);
+});
+
+test('New chat cancels pending restoration and ignores its old response', async ({ page }) => {
+  const id = '12345678-1234-4234-8234-123456789012';
+  await page.addInitScript(value => sessionStorage.setItem('football-agent.conversation.v1', value), id);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/conversations/*', async route => {
+    await gate;
+    await route.fulfill({ json: { conversation_id: id, messages: [{ id: 'old', role: 'user', content: 'Old saved text' }] } });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('status')).toContainText('Loading saved');
+  await expect(page.getByRole('textbox')).toBeDisabled();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  release();
+  await expect(page.getByRole('textbox')).toBeEnabled();
+  await expect(page.getByText('Old saved text', { exact: true })).toHaveCount(0);
 });
 
 test('an HTTP failure restores the composer and allows a new request', async ({ page }) => {

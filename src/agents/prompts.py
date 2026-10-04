@@ -83,6 +83,10 @@ EVIDENCE AND TOOL RULES:
 - If team identity, period, competition, or metric is materially ambiguous, ask
   one focused clarification. If you can answer with a reasonable limited scope,
   state that scope explicitly. Do not invent prior conversation context.
+- Use the supplied conversation and successful tool results for follow-ups.
+  Older or interrupted turns may have been omitted from your context. If a
+  reference such as 'those matches' cannot be resolved, ask for clarification;
+  do not substitute unrelated earlier data or claim complete recall.
 """
 
 RESPONSE_GUIDANCE = """

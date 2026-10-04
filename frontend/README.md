@@ -1,4 +1,4 @@
-# Blocks 5–6: React chat and database results
+# React chat and database results
 
 This is the browser client for the existing FastAPI football agent. Run the API
 on port 8000, then run `npm ci` and `npm run dev` in this directory. Open
@@ -27,7 +27,9 @@ public and embedded at build time. Never store API keys in frontend variables.
 1. `ChatInput` calls `onSend` with a trimmed question of up to 2,000 characters.
 2. `App` appends the user message and creates an `AbortController`. A ref prevents
    a second submission even before React renders the disabled button.
-3. `streamChat` sends `{ "message": "..." }` to `POST /chat/stream`.
+3. `streamChat` sends `{ "message": "...", "conversation_id": "..." }` to
+   `POST /chat/stream`. The same UUID is reused for follow-ups and saved in this
+   tab's sessionStorage. On refresh, history is loaded before input is enabled.
 4. A streaming `TextDecoder` preserves UTF-8 characters split across byte chunks.
 5. The SSE parser keeps incomplete text until it has complete lines/events.
    It handles LF, CRLF, CR, comments, and multi-line `data` fields.
@@ -46,10 +48,20 @@ work to stop model execution after a client aborts.
 
 ## State and limits
 
-Chat messages exist only in component state, so refreshing clears them. The API
-currently receives only the latest question and does not remember earlier turns.
-Ask complete questions until persistent backend sessions are added in Block 8.
-The UI does not imply persistent memory or render private model reasoning.
+Visible messages live in component state; only the active UUID is saved in
+sessionStorage. On refresh, `src/api/history.js` fetches and validates saved
+messages and SQL results from `GET /conversations/{uuid}`. Cards, charts, and
+tables use the same existing components. Interrupted turns are marked incomplete.
+History loading never runs the model or replays a tool call. Input stays disabled
+until restoration succeeds; failures offer Retry or New chat. Missing history
+starts a fresh ID with a visible explanation. Stale loads are aborted/ignored.
+
+The backend persists history and supplies bounded recent context to the model.
+The browser still sends only the new question. New chat (disabled while a chat
+request runs) clears messages/draft/errors and replaces the UUID without deleting
+checkpoints. It can abandon a pending history load. Browser storage failures show
+a warning. There is no saved-chat list or cross-device restoration. Conversation
+IDs are not authentication: this remains a local prototype.
 
 Plain text is intentional: output such as HTML is displayed literally rather
 than injected into the page. Raw server exception details are not displayed by

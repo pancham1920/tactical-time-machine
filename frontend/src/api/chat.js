@@ -18,7 +18,7 @@ export function answerText(content) {
 }
 
 /** Submit one question and deliver progress events; never automatically retry. */
-export async function streamChat({ message, onEvent, signal, baseUrl = DEFAULT_BASE_URL }) {
+export async function streamChat({ message, conversationId, onEvent, signal, baseUrl = DEFAULT_BASE_URL }) {
   const question = message.trim();
   if (!question || question.length > 2000) {
     throw new Error('Enter a question between 1 and 2,000 characters.');
@@ -29,7 +29,7 @@ export async function streamChat({ message, onEvent, signal, baseUrl = DEFAULT_B
     response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ message: question }),
+      body: JSON.stringify({ message: question, conversation_id: conversationId }),
       signal,
     });
   } catch (error) {
@@ -40,6 +40,7 @@ export async function streamChat({ message, onEvent, signal, baseUrl = DEFAULT_B
   if (!response.ok) {
     await response.body?.cancel();
     if (response.status === 422) throw new Error('The question was rejected. Use 1–2,000 characters.');
+    if (response.status === 409) throw new Error('This conversation is still busy. Wait a moment and try again.');
     if (response.status === 429) throw new Error('Too many requests. Wait a moment and try again.');
     throw new Error(`The football API could not complete this request (HTTP ${response.status}).`);
   }
@@ -59,6 +60,9 @@ export async function streamChat({ message, onEvent, signal, baseUrl = DEFAULT_B
       return;
     }
     if (event === 'error') {
+      if (data?.code === 'context_limit') {
+        throw new Error('This exchange is too large or incomplete. Narrow your question or start a new chat.');
+      }
       // Do not display raw backend exception text to visitors.
       throw new Error('The football agent could not complete this request. Please try again.');
     }
