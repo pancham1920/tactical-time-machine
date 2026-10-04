@@ -240,6 +240,13 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("private database path", response.text)
         self.assertFalse(api.app.state.active_conversations)
 
+    def test_sql_stop_node_is_streamed_as_final_answer(self):
+        self.stream_updates = [{"sql_stop": {"messages": [AIMessage(content="SQL correction limit reached.")]}}]
+        response = self.client.post("/chat/stream", json={"message": "Count matches"})
+        events = self.parse_events(response)
+        self.assertEqual([name for name, _ in events], ["connected", "final_answer", "complete"])
+        self.assertEqual(events[1][1]["answer"], "SQL correction limit reached.")
+
 
 if __name__ == "__main__":
     unittest.main()

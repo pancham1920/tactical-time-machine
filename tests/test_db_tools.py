@@ -90,6 +90,31 @@ class DatabaseToolTests(unittest.TestCase):
         self.assertEqual(len(result["rows"]), 100)
         self.assertFalse(result["truncated"])
 
+    def test_real_sqlite_error_then_graph_correction(self):
+        from langchain_core.messages import AIMessage, HumanMessage
+        from src.agents import graph
+        with patch.object(graph, "get_llm_client") as factory:
+            model = factory.return_value.bind_tools.return_value
+            model.invoke.side_effect = [
+                AIMessage(content="", tool_calls=[{"id": "bad", "name": "execute_sql", "args": {"query": "SELECT wrong_column FROM players"}}]),
+                AIMessage(content="", tool_calls=[{"id": "fixed", "name": "execute_sql", "args": {"query": "SELECT COUNT(*) AS count FROM players"}}]),
+                AIMessage(content="105 players"),
+            ]
+            state = graph.build_agent().invoke({"messages": [HumanMessage(content="Count players")]})
+            self.assertEqual(state["messages"][-1].content, "105 players")
+            error = json.loads(state["messages"][2].content)
+            self.assertTrue(error["retryable"])
+            self.assertEqual(error["error_code"], "invalid_sql")
+            self.assertEqual(json.loads(state["messages"][4].content)["rows"], [{"count": 105}])
+
+    def test_missing_known_table_and_rejected_writes_are_not_retryable(self):
+        missing = self.invoke_query("SELECT * FROM games")
+        self.assertFalse(missing["retryable"])
+        self.assertEqual(missing["error_code"], "database_setup")
+        rejected = self.invoke_query("DELETE FROM players")
+        self.assertFalse(rejected["retryable"])
+        self.assertEqual(rejected["error_code"], "query_rejected")
+
 
 if __name__ == "__main__":
     unittest.main()

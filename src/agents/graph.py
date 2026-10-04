@@ -4,12 +4,12 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
 
 from src.agents.config import get_llm_client
 from src.agents.context import context_budget, select_model_messages
 from src.agents.prompts import SYSTEM_PROMPT
 from src.tools.db_tools import execute_sql
+from src.agents.sql_retry import guarded_tools, after_tools, stop_sql
 
 
 TOOLS = [execute_sql]
@@ -58,12 +58,15 @@ def build_agent(checkpointer=None):
     workflow = StateGraph(AgentState)
     # The API uses the async implementation; the CLI can still invoke synchronously.
     workflow.add_node("agent", RunnableLambda(call_model, afunc=acall_model))
-    workflow.add_node("tools", ToolNode(TOOLS))
+    # RunnableLambda offloads this synchronous SQL node when invoked asynchronously.
+    workflow.add_node("tools", guarded_tools)
+    workflow.add_node("sql_stop", stop_sql)
     workflow.set_entry_point("agent")
     workflow.add_conditional_edges(
         "agent", should_continue, {"continue": "tools", "end": END},
     )
-    workflow.add_edge("tools", "agent")
+    workflow.add_conditional_edges("tools", after_tools, {"continue": "agent", "stop": "sql_stop"})
+    workflow.add_edge("sql_stop", END)
     return workflow.compile(checkpointer=checkpointer)
 
 

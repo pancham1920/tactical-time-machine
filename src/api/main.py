@@ -130,7 +130,7 @@ async def stream_sse_events(agent, message: str, conversation_id: str) -> AsyncI
                     if node_name == "agent" and last_message.tool_calls:
                         tool_names = [call["name"] for call in last_message.tool_calls]
                         yield format_sse_event("tool_call", {"tools": tool_names})
-                    elif node_name == "agent":
+                    elif node_name in ("agent", "sql_stop"):
                         yield format_sse_event(
                             "final_answer", {"answer": last_message.content}
                         )

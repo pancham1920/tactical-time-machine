@@ -55,6 +55,15 @@ You have access to the following structural database layouts:
 
 EVIDENCE_RULES = """
 EVIDENCE AND TOOL RULES:
+- SQL recovery is bounded by code: at most two correction executions per user
+  question and eight tool executions total. Successful independent queries do
+  not use correction budget. A query executed after a retryable failure uses one
+  correction, even if it succeeds; that budget is not reset until a new question.
+  Read retryable/error_code in tool output. For retryable SQL errors, correct
+  the query using the documented schema and SQLite syntax, then try once more
+  within the remaining budget. Never repeat a failed SQL query or bypass guards.
+  Empty results are successful execution, not a reason for SQL-error retries.
+  Missing data and semantic mistakes cannot be fixed merely by retrying syntax.
 - Use execute_sql whenever answering factual football questions from the database.
   Request one read-only SELECT query (a read-only WITH query is also supported).
   Never request changes to the database or assume columns outside the schema.

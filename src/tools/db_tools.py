@@ -1,7 +1,4 @@
-"""Database tools for the football agent.
-
-Block 3 will add safe, read-only SQLite query functions here.
-"""
+"""Database execution and structured SQL-error classification."""
 
 from pathlib import Path
 import json
@@ -26,7 +23,35 @@ WRITE_KEYWORDS = re.compile(
 
 def get_database_engine() -> Engine:
     """Create a SQLAlchemy engine that connects to the local SQLite database."""
+    if not DATABASE_PATH.is_file():
+        raise FileNotFoundError("Football database is missing; seed it before querying.")
     return create_engine(f"sqlite:///{DATABASE_PATH}")
+
+
+KNOWN_TABLES = {"agent_match_view", "players", "clubs", "appearances", "games", "transfers", "player_valuations"}
+
+
+def classify_sql_error(error: SQLAlchemyError) -> dict:
+    """Allow corrections only for known query mistakes, not infrastructure failures."""
+    detail = str(getattr(error, "orig", error)).split("\n")[0][:300]
+    lower = detail.lower()
+    retryable = False
+    code = "database_error"
+    if "no such table:" in lower:
+        table = lower.split("no such table:", 1)[1].strip().split(".")[-1].strip('"`[]')
+        retryable = table not in KNOWN_TABLES
+        code = "unknown_table" if retryable else "database_setup"
+    elif any(marker in lower for marker in (
+        "no such column:", "ambiguous column name:", "syntax error", "incomplete input",
+        "no such function:", "wrong number of arguments to function", "misuse of aggregate",
+        "misuse of window", "having clause on a non-aggregate", "order by term does not match",
+    )):
+        retryable = True
+        code = "invalid_sql"
+    # SQLite's short diagnostic helps the model correct SQL; omit SQLAlchemy's
+    # appended SQL/parameters/traceback. Infrastructure errors get a generic message.
+    message = f"SQLite query failed: {detail}" if retryable else "Database unavailable or setup incomplete; SQL rewriting cannot fix this."
+    return {"error": message, "error_code": code, "retryable": retryable}
 
 
 def validate_read_query(query: str) -> str | None:
@@ -49,11 +74,10 @@ def run_query(query: str) -> dict[str, object]:
     """Run a safe SQL query and return up to MAX_ROWS result rows."""
     validation_error = validate_read_query(query)
     if validation_error:
-        return {"error": validation_error}
-
-    engine = get_database_engine()
+        return {"error": validation_error, "error_code": "query_rejected", "retryable": False}
 
     try:
+        engine = get_database_engine()
         with engine.connect() as connection:
             result = connection.execute(text(query))
             rows = [
@@ -61,7 +85,9 @@ def run_query(query: str) -> dict[str, object]:
                 for row in result.mappings().fetchmany(MAX_ROWS + 1)
             ]
     except SQLAlchemyError as exc:
-        return {"error": f"SQLite query failed: {exc}"}
+        return classify_sql_error(exc)
+    except FileNotFoundError:
+        return {"error": "Football database is missing; seed it before querying.", "error_code": "database_setup", "retryable": False}
 
     truncated = len(rows) > MAX_ROWS
     return {"rows": rows[:MAX_ROWS], "truncated": truncated}

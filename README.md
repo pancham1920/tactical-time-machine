@@ -6,7 +6,7 @@ read its results, and explain the answer. FastAPI exposes both a JSON response
 and a stream of tool activity and the final answer. A React chat interface shows
 the conversation and live progress in the browser.
 
-**Status:** Blocks 1–8 implemented as a local prototype, including tab refresh
+**Status:** Blocks 1–9 implemented as a local prototype, including bounded SQL correction and tab refresh
 history restoration. Deployment is not implemented. No hosted demo is currently
 provided; the deployment target is a $0 proof of concept with free-tier limits.
 
@@ -327,7 +327,7 @@ guard cleanup. Browser tests mock HTTP responses. Live Gemini follow-up quality
 remains a separate manual check: ask for a team's five recent matches, then ask
 "How many of those did they win?" without repeating the team.
 
-Current verification: 40 Python tests, 28 frontend unit tests, 24 desktop/mobile
+Current verification: 54 Python tests, 28 frontend unit tests, 24 desktop/mobile
 Chrome browser tests, and the frontend production build passed without live
 Gemini calls. The Python suite emits an existing TestClient/httpx deprecation
 warning; migrating that test dependency is separate from conversation memory.
@@ -342,6 +342,7 @@ src/agents/graph.py     Agent/tool graph and message state
 src/agents/memory.py    Persistent checkpoint connection lifecycle
 src/agents/context.py   Tool-safe bounded model context
 src/agents/history.py   UI-safe checkpoint history projection
+src/agents/sql_retry.py Deterministic SQL correction budget and terminal responses
 src/tools/db_tools.py   SQL validation, execution, and JSON formatting
 src/api/main.py         HTTP endpoints and SSE formatting
 tests/                  Offline SQL and API tests
@@ -363,10 +364,45 @@ DATA_SOURCES.md          Dataset provenance and preparation
 | 6 | Tables, stat cards, and charts | Implemented; live-data review pending |
 | 7 | Richer tactical commentary | Prompt and offline tests implemented; live answer-quality review pending |
 | 8 | Persistent conversation memory | Agent memory and tab-refresh history restoration implemented; live review pending |
-| 9 | Explicit, bounded SQL correction/retry policy | Planned; tool errors already return to the model |
+| 9 | Explicit, bounded SQL correction/retry policy | Implemented; simulated-model and real SQLite recovery tested |
 | 10 | Deployment and integration testing | Planned |
 
 ## Current limitations
+
+### SQL correction policy
+
+`src/agents/sql_retry.py` replaces the unrestricted tool-node loop with sequential,
+budgeted tool execution. Each user question allows at most two correction
+executions and eight tool executions total, including calls in the same model
+response. Counts are reconstructed from the current turn's messages, so they
+survive checkpoints but reset for a new user question. A query immediately after
+a retryable failure consumes a correction even when it succeeds. Independent
+successful queries do not consume corrections; success does not replenish the
+question's spent budget.
+
+The SQL tool returns `error_code` and `retryable` with failures. Recognized SQLite
+syntax, column/alias, unsupported-function and aggregate errors can be corrected.
+Unknown table names can be corrected against the documented schema; a missing
+known table indicates incomplete setup and stops. Missing database files no
+longer cause the query tool to create an empty SQLite database. Locked/unavailable
+databases, unknown tool failures, and all validation rejections stop immediately.
+Multi-statement queries remain rejected rather than being automatically split.
+No safety check is relaxed during correction.
+
+A previously failed query repeated with only unquoted case/whitespace or trailing
+semicolon changes stops before database access. This is conservative fingerprinting,
+not semantic SQL equivalence. Every requested call still receives a ToolMessage,
+including calls skipped after a limit, keeping memory context structurally valid.
+The `sql_stop` node writes a deterministic explanation without another Gemini
+call. The API emits it as a final answer, so it is also restored from history.
+Earlier query results remain visible as individual outputs, not a completed
+analysis. Empty result sets are successful execution, not retry failures.
+
+Retries fix execution mistakes, not incorrect football interpretations. Model
+service failures are not retried. There is still no SQL execution timeout, and
+the graph's general recursion limit remains a separate last-resort bound.
+
+### Other limitations
 
 - SQL protection uses keyword checks, not a SQL parser or a database-enforced
   read-only connection. There is no query timeout or table allowlist. The row
