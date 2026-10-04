@@ -1,7 +1,8 @@
 # React chat and database results
 
 This is the browser client for the existing FastAPI football agent. Run the API
-on port 8000, then run `npm ci` and `npm run dev` in this directory. Open
+on port 8000 in explicit local mode, then run `npm ci` and
+`VITE_AUTH_MODE=local npm run dev` in this directory. Open
 `http://localhost:5173`. The [root README](../README.md) explains backend setup.
 
 ## Configuration
@@ -9,12 +10,17 @@ on port 8000, then run `npm ci` and `npm run dev` in this directory. Open
 The client defaults to `http://127.0.0.1:8000`. Optionally copy `.env.example`
 to `.env`, change `VITE_API_BASE_URL`, and restart the dev server. This value is
 public and embedded at build time. Never store API keys in frontend variables.
+Hosted builds use `npm run build:hosted`, require the real HTTPS Render API
+origin, and cannot use the local auth bypass. `vercel.json` defines static
+hosting; select Hobby in the dashboard separately. The hosted UI asks for an
+invitation code, which is entered by the visitor, never embedded at build time.
 
 ## Files to read in order
 
 | File | Responsibility |
 | --- | --- |
 | `src/main.jsx` | Mount React and import the stylesheet. |
+| `src/AccessGate.jsx` | Verify invitation access and keep credentials in tab-scoped storage. |
 | `src/App.jsx` | Own messages, loading/progress/error state, and request cancellation. |
 | `src/components/ChatInput.jsx` | Own draft text; validate and submit it through a callback. |
 | `src/components/ChatMessage.jsx` | Render one user or assistant message as escaped text. |
@@ -48,8 +54,9 @@ work to stop model execution after a client aborts.
 
 ## State and limits
 
-Visible messages live in component state; only the active UUID is saved in
-sessionStorage. On refresh, `src/api/history.js` fetches and validates saved
+Visible messages live in component state; the active UUID and, in invite mode,
+access credentials are saved in tab-scoped sessionStorage. On refresh,
+`src/api/history.js` fetches and validates saved
 messages and SQL results from `GET /conversations/{uuid}`. Cards, charts, and
 tables use the same existing components. Interrupted turns are marked incomplete.
 History loading never runs the model or replays a tool call. Input stays disabled
@@ -61,7 +68,9 @@ The browser still sends only the new question. New chat (disabled while a chat
 request runs) clears messages/draft/errors and replaces the UUID without deleting
 checkpoints. It can abandon a pending history load. Browser storage failures show
 a warning. There is no saved-chat list or cross-device restoration. Conversation
-IDs are not authentication: this remains a local prototype.
+IDs alone are not authentication: invite mode also requires the private code
+and random browser session secret. Leaving the demo clears access, not server
+checkpoints. No user-account or authentication-provider service is used.
 
 Plain text is intentional: output such as HTML is displayed literally rather
 than injected into the page. Raw server exception details are not displayed by

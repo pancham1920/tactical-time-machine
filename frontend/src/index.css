@@ -96,3 +96,11 @@ h1 span { color: #9eac9d; }
 @media (max-width: 1000px) { .sidebar { width: 210px; padding-inline: 18px; } .conversation-inner, .composer-inner { padding-inline: 28px; } .topbar { padding-inline: 28px; } }
 @media (max-width: 760px) { .sidebar { display: none; } .topbar { height: 65px; padding-inline: 20px; } .desktop-breadcrumb { display: none; } .mobile-brand { display: block; font-size: 13px; font-weight: 600; } .conversation-inner, .composer-inner { padding-inline: 20px; } .welcome { padding-top: 42px; } .composer-area { padding-bottom: max(12px, env(safe-area-inset-bottom)); } }
 @media (max-width: 480px) { h1 { font-size: 30px; } .welcome-description { font-size: 13px; margin-bottom: 25px; } .suggestions { grid-template-columns: 1fr; gap: 8px; } .suggestion { padding: 14px 32px 14px 42px; } .suggestion-number { position: absolute; left: 15px; top: 17px; } .suggestion-label { margin-bottom: 4px; } .composer textarea { font-size: 16px; padding: 14px; } .composer-bottom { padding-left: 14px; } .character-count { display: none; } .header-tag { font-size: 9px; } .message { gap: 12px; } }
+/* Invite-only access screen; existing chat layout stays intact. */
+.auth-panel { max-width: 38rem; margin: 10vh auto; padding: 2rem; }
+.auth-panel p { margin: 1rem 0; line-height: 1.6; }
+.auth-panel form { display: flex; flex-direction: column; gap: .75rem; }
+.auth-panel input { padding: .75rem; border: 1px solid #91a192; border-radius: .5rem; }
+.account-bar { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; padding: .5rem 1rem; }
+.authenticated-shell { height: 100dvh; display: flex; flex-direction: column; }
+.authenticated-shell .app-shell { flex: 1; height: auto; min-height: 0; }

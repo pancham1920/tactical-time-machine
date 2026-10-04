@@ -17,11 +17,15 @@ from src.agents.graph import build_agent
 from src.agents.memory import open_checkpointer
 from src.agents.context import ContextLimitError, context_budget
 from src.agents.history import conversation_messages
+from src.api.config import allowed_origins
+from src.api.security import SecurityMiddleware, owned_thread, auth_mode, access_code
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     context_budget()  # Fail early on invalid configuration.
+    if auth_mode() == "invite":
+        access_code()
     async with open_checkpointer() as saver:
         app.state.agent = build_agent(saver)
         app.state.active_conversations = set()
@@ -29,10 +33,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Tactical Time-Machine API", lifespan=lifespan)
+app.add_middleware(SecurityMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,8 +64,12 @@ def thread_config(conversation_id: str) -> dict:
 
 def reserve_conversation(request: Request, body: ChatRequest) -> str:
     conversation_id = str(body.conversation_id or uuid4())
-    acquire_conversation(request.app.state.active_conversations, conversation_id)
+    acquire_conversation(request.app.state.active_conversations, request_thread(request, conversation_id))
     return conversation_id
+
+
+def request_thread(request: Request, conversation_id: str) -> str:
+    return owned_thread(request.state.user_id, conversation_id)
 
 
 def acquire_conversation(active: set, conversation_id: str):
@@ -113,12 +122,12 @@ def tool_result_payload(message) -> dict:
     }
 
 
-async def stream_sse_events(agent, message: str, conversation_id: str) -> AsyncIterator[str]:
+async def stream_sse_events(agent, message: str, conversation_id: str, internal_id: str | None = None) -> AsyncIterator[str]:
     """Convert LangGraph updates into browser-readable SSE events."""
     yield format_sse_event("connected", {"message": "Agent started", "conversation_id": conversation_id})
 
     try:
-        async with aclosing(stream_agent_updates(agent, message, conversation_id)) as updates:
+        async with aclosing(stream_agent_updates(agent, message, internal_id or conversation_id)) as updates:
             async for update in updates:
                 for node_name, state_data in update.items():
                     if node_name == "tools":
@@ -148,10 +157,16 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/access")
+def check_access():
+    """Middleware already checked the invitation; never call the model here."""
+    return {"status": "ok"}
+
+
 @app.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: UUID, request: Request):
     """Restore a local conversation without invoking the model or returning metadata."""
-    thread_id = str(conversation_id)
+    thread_id = request_thread(request, str(conversation_id))
     active = request.app.state.active_conversations
     acquire_conversation(active, thread_id)
     try:
@@ -160,7 +175,7 @@ async def get_conversation(conversation_id: UUID, request: Request):
         if not messages:
             raise HTTPException(status_code=404, detail="Conversation not found")
         return JSONResponse({
-            "conversation_id": thread_id,
+            "conversation_id": str(conversation_id),
             "messages": conversation_messages(messages, tool_result_payload),
         }, headers={"Cache-Control": "no-store"})
     except HTTPException:
@@ -177,7 +192,7 @@ async def chat(body: ChatRequest, request: Request) -> dict:
     conversation_id = reserve_conversation(request, body)
     try:
         final_state = await request.app.state.agent.ainvoke(
-            {"messages": [HumanMessage(content=body.message)]}, thread_config(conversation_id),
+            {"messages": [HumanMessage(content=body.message)]}, thread_config(request_thread(request, conversation_id)),
         )
         answer = final_state["messages"][-1].content
         return {"answer": answer, "conversation_id": conversation_id}
@@ -190,7 +205,7 @@ async def chat(body: ChatRequest, request: Request) -> dict:
         ) from exc
 
     finally:
-        request.app.state.active_conversations.discard(conversation_id)
+        request.app.state.active_conversations.discard(request_thread(request, conversation_id))
 
 
 class ConversationStreamResponse(StreamingResponse):
@@ -218,6 +233,6 @@ async def stream_chat(body: ChatRequest, request: Request) -> StreamingResponse:
     """Stream one football-agent response as Server-Sent Events."""
     conversation_id = reserve_conversation(request, body)
     return ConversationStreamResponse(
-        stream_sse_events(request.app.state.agent, body.message, conversation_id),
-        request.app.state.active_conversations, conversation_id,
+        stream_sse_events(request.app.state.agent, body.message, conversation_id, request_thread(request, conversation_id)),
+        request.app.state.active_conversations, request_thread(request, conversation_id),
     )

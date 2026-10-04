@@ -1,6 +1,7 @@
 """Real SQLite checkpoints with fake model calls; never touches football data."""
 
 import asyncio
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -17,6 +18,9 @@ from src.api import main as api
 
 class MemoryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        environment = patch.dict(os.environ, {"AUTH_MODE": "local", "RENDER": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / "memory.db"
@@ -120,6 +124,11 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConcurrentApiTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        environment = patch.dict(os.environ, {"AUTH_MODE": "local", "RENDER": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     async def test_stream_holds_guard_but_different_thread_can_run(self):
         started, release = asyncio.Event(), asyncio.Event()
         fake = MagicMock()

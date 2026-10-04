@@ -11,9 +11,10 @@ const SUGGESTIONS = [
   { label: 'Explore player value', question: 'Which five players have the highest recorded market value?' },
 ];
 
-export default function App() {
+export default function App({ userId = 'local', access = null }) {
+  const storageKey = userId === 'local' ? CONVERSATION_KEY : `${CONVERSATION_KEY}:${userId}`;
   const [messages, setMessages] = useState([]);
-  const [initial] = useState(initialConversation);
+  const [initial] = useState(() => initialConversation(storageKey));
   const [conversationId, setConversationId] = useState(initial.id);
   const [restoreNeeded, setRestoreNeeded] = useState(initial.restore);
   const [historyStatus, setHistoryStatus] = useState(initial.restore ? 'loading' : 'ready');
@@ -27,9 +28,9 @@ export default function App() {
   const scrollEnd = useRef(null);
 
   useEffect(() => {
-    try { sessionStorage.setItem(CONVERSATION_KEY, conversationId); }
+    try { sessionStorage.setItem(storageKey, conversationId); }
     catch { setStorageWarning(true); }
-  }, [conversationId]);
+  }, [conversationId, storageKey]);
 
   useEffect(() => {
     if (!restoreNeeded) return;
@@ -37,7 +38,7 @@ export default function App() {
     historyControllerRef.current = controller;
     setHistoryStatus('loading');
     setError(null);
-    loadConversation(conversationId, { signal: controller.signal }).then(history => {
+    loadConversation(conversationId, { signal: controller.signal, token: access?.code, session: access?.session }).then(history => {
       if (controller.signal.aborted) return;
       setMessages(history ?? []);
       if (history === null) {
@@ -52,7 +53,7 @@ export default function App() {
       setError(failure.message);
     });
     return () => controller.abort();
-  }, [conversationId, restoreNeeded, historyAttempt]);
+  }, [conversationId, restoreNeeded, historyAttempt, access]);
 
   function startNewChat() {
     if (controllerRef.current) return;
@@ -96,6 +97,8 @@ export default function App() {
 
     try {
       await streamChat({
+        token: access?.code,
+        session: access?.session,
         message: question,
         conversationId,
         signal: controller.signal,
@@ -202,7 +205,7 @@ export default function App() {
         <footer className="composer-area">
           <div className="composer-inner">
             <ChatInput key={conversationId} disabled={isStreaming || restoreNeeded} onSend={handleSend} />
-            <p className="session-note">Refresh restores this tab’s saved chat. New chat starts fresh without deleting old chats. Follow-ups use recent context.</p>
+            <p className="session-note">Refresh restores this tab’s chat while server history is available. On the free-hosted demo, history can be lost after idle shutdowns, restarts, or redeploys. New chat starts fresh without deleting old chats. Do not enter sensitive information.</p>
             {storageWarning && <p className="result-warning">Browser storage is unavailable; this chat cannot be restored automatically after refresh.</p>}
           </div>
         </footer>

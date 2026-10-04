@@ -3,10 +3,13 @@
 from pathlib import Path
 import json
 import re
+import sqlite3
+import time
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import NullPool
 from langchain_core.tools import tool
 
 
@@ -15,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATABASE_PATH = PROJECT_ROOT / "football_vault.db"
 MAX_ROWS = 100
 READ_QUERY = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
+SQL_TIMEOUT_SECONDS = 5
 WRITE_KEYWORDS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|ATTACH|DETACH|PRAGMA|VACUUM)\b",
     re.IGNORECASE,
@@ -25,10 +29,42 @@ def get_database_engine() -> Engine:
     """Create a SQLAlchemy engine that connects to the local SQLite database."""
     if not DATABASE_PATH.is_file():
         raise FileNotFoundError("Football database is missing; seed it before querying.")
-    return create_engine(f"sqlite:///{DATABASE_PATH}")
+    def connect():
+        connection = sqlite3.connect(DATABASE_PATH.resolve().as_uri() + "?mode=ro", uri=True,
+                                     timeout=2, check_same_thread=False)
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("PRAGMA temp_store=MEMORY")
+        connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 128 * 1024)
+        connection.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, 20_000)
+        deadline = time.monotonic() + SQL_TIMEOUT_SECONDS
+        connection.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+        connection.set_authorizer(authorize_sql)
+        return connection
+    return create_engine("sqlite://", creator=connect, poolclass=NullPool)
 
 
 KNOWN_TABLES = {"agent_match_view", "players", "clubs", "appearances", "games", "transfers", "player_valuations"}
+
+
+def authorize_sql(action, first, second, database, source):
+    """SQLite-enforced table/function boundary, independent of prompt and regex."""
+    if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_RECURSIVE):
+        return sqlite3.SQLITE_OK
+    # SQLite reports no database name for COUNT(*)'s empty-column read.
+    if action == sqlite3.SQLITE_READ and database in ("main", None) and first in KNOWN_TABLES:
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_FUNCTION and (second or "").lower() in {
+        "count", "sum", "avg", "min", "max", "total", "round", "abs",
+        "coalesce", "ifnull", "nullif", "lower", "upper", "trim", "ltrim", "rtrim",
+        "substr", "substring", "length", "instr", "like", "glob",
+        "date", "datetime", "strftime", "julianday", "unixepoch",
+        "row_number", "rank", "dense_rank", "lag", "lead", "first_value", "last_value",
+    }:
+        return sqlite3.SQLITE_OK
+    # SQLAlchemy checks this pragma when initializing its SQLite dialect.
+    if action == sqlite3.SQLITE_PRAGMA and first == "read_uncommitted" and second is None:
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
 
 
 def classify_sql_error(error: SQLAlchemyError) -> dict:
@@ -76,6 +112,7 @@ def run_query(query: str) -> dict[str, object]:
     if validation_error:
         return {"error": validation_error, "error_code": "query_rejected", "retryable": False}
 
+    engine = None
     try:
         engine = get_database_engine()
         with engine.connect() as connection:
@@ -88,6 +125,9 @@ def run_query(query: str) -> dict[str, object]:
         return classify_sql_error(exc)
     except FileNotFoundError:
         return {"error": "Football database is missing; seed it before querying.", "error_code": "database_setup", "retryable": False}
+    finally:
+        if engine is not None:
+            engine.dispose()
 
     truncated = len(rows) > MAX_ROWS
     return {"rows": rows[:MAX_ROWS], "truncated": truncated}

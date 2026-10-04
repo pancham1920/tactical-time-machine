@@ -92,3 +92,18 @@ match based only on filenames or schema.
 The offline automated tests create synthetic records and do not redistribute
 any rows from these football CSVs. You can run the tests and the `/health`
 endpoint without acquiring the dataset.
+
+## Compact deployment artifact
+
+`python -m scripts.prepare_football_db` creates a local, Git-ignored artifact
+from the existing database without changing it. It preserves every row of
+`players`, `clubs`, `appearances`, `games`, `transfers`, and `player_valuations`,
+but projects them onto the agent's documented columns plus the match view's
+club join IDs. Other tables and columns are excluded. `agent_match_view` and
+lookup indexes are recreated. This is schema reduction, not a sampled season
+or a newly downloaded dataset; it does not repair missing source records.
+
+The accompanying manifest records row counts, match date range, projected
+columns, sizes, and SHA-256 checksums. The original upstream release remains
+unknown. Publishing this artifact is separate from local preparation and needs
+review of the publisher's terms. No artifact upload has been performed.

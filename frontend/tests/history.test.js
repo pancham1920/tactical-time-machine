@@ -10,7 +10,8 @@ const messages = [{ id: 'user-1', role: 'user', content: 'Count' },
 
 test('history GET sends no model input and returns typed display messages', async t => {
   const mock = t.mock.method(globalThis, 'fetch', async () => Response.json({ conversation_id: id, messages }));
-  assert.deepEqual(await loadConversation(id, { baseUrl: 'http://test/' }), messages);
+  assert.deepEqual(await loadConversation(id, { baseUrl: 'http://test/', token: 'test-token' }), messages);
+  assert.equal(mock.mock.calls[0].arguments[1].headers.Authorization, 'Bearer test-token');
   assert.equal(mock.mock.calls[0].arguments[0], `http://test/conversations/${id}`);
   assert.equal(mock.mock.calls[0].arguments[1].cache, 'no-store');
   assert.equal(mock.mock.calls[0].arguments[1].body, undefined);
@@ -45,4 +46,19 @@ test('session ID is reused only if valid; unavailable storage degrades safely', 
   assert.equal(initialConversation().restore, false);
   globalThis.sessionStorage.getItem = () => { throw new Error('denied'); };
   assert.equal(initialConversation().restore, false);
+});
+
+test('account-specific storage keys do not restore another account', t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  t.after(() => { if (original) Object.defineProperty(globalThis, 'sessionStorage', original); else delete globalThis.sessionStorage; });
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: key => key === `${CONVERSATION_KEY}:user-a` ? id : null,
+  } });
+  assert.deepEqual(initialConversation(`${CONVERSATION_KEY}:user-a`), { id, restore: true });
+  assert.equal(initialConversation(`${CONVERSATION_KEY}:user-b`).restore, false);
+});
+
+test('expired history token requires sign-in, not a fresh conversation', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 401 }));
+  await assert.rejects(loadConversation(id, { token: 'expired' }), /Leave the demo/);
 });

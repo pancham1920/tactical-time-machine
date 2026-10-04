@@ -1,6 +1,7 @@
 """Test the HTTP contract without an API key, live model, or football data."""
 
 import json
+import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
@@ -14,6 +15,9 @@ from src.api import main as api
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(os.environ, {"AUTH_MODE": "local", "RENDER": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
         # Patch the graph for every test so none can issue a real Gemini call.
         self.agent = MagicMock()
         self.agent.ainvoke = AsyncMock()

@@ -15,6 +15,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
+    env: { VITE_AUTH_MODE: 'local' },
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
   },

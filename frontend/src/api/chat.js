@@ -18,7 +18,7 @@ export function answerText(content) {
 }
 
 /** Submit one question and deliver progress events; never automatically retry. */
-export async function streamChat({ message, conversationId, onEvent, signal, baseUrl = DEFAULT_BASE_URL }) {
+export async function streamChat({ message, conversationId, onEvent, signal, token, session, baseUrl = DEFAULT_BASE_URL }) {
   const question = message.trim();
   if (!question || question.length > 2000) {
     throw new Error('Enter a question between 1 and 2,000 characters.');
@@ -28,7 +28,8 @@ export async function streamChat({ message, conversationId, onEvent, signal, bas
   try {
     response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream',
+        ...(token ? { Authorization: `Bearer ${token}`, 'X-Demo-Session': session } : {}) },
       body: JSON.stringify({ message: question, conversation_id: conversationId }),
       signal,
     });
@@ -39,6 +40,7 @@ export async function streamChat({ message, conversationId, onEvent, signal, bas
 
   if (!response.ok) {
     await response.body?.cancel();
+    if (response.status === 401) throw new Error('Access expired or changed. Leave the demo and enter the access code again.');
     if (response.status === 422) throw new Error('The question was rejected. Use 1–2,000 characters.');
     if (response.status === 409) throw new Error('This conversation is still busy. Wait a moment and try again.');
     if (response.status === 429) throw new Error('Too many requests. Wait a moment and try again.');

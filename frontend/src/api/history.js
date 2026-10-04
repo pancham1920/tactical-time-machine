@@ -4,9 +4,9 @@ export const CONVERSATION_KEY = 'football-agent.conversation.v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-export function initialConversation() {
+export function initialConversation(storageKey = CONVERSATION_KEY) {
   try {
-    const id = sessionStorage.getItem(CONVERSATION_KEY);
+    const id = sessionStorage.getItem(storageKey);
     if (id && UUID.test(id)) return { id, restore: true };
   } catch { /* Storage can be unavailable in privacy-restricted browsers. */ }
   return { id: crypto.randomUUID(), restore: false };
@@ -28,17 +28,19 @@ export function validateHistory(data, conversationId) {
   return messages;
 }
 
-export async function loadConversation(conversationId, { signal, baseUrl = BASE_URL } = {}) {
+export async function loadConversation(conversationId, { signal, token, session, baseUrl = BASE_URL } = {}) {
   let response;
   try {
     response = await fetch(`${baseUrl.replace(/\/+$/, '')}/conversations/${encodeURIComponent(conversationId)}`, {
-      signal, cache: 'no-store', headers: { Accept: 'application/json' },
+      signal, cache: 'no-store', headers: { Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}`, 'X-Demo-Session': session } : {}) },
     });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error('Could not load saved chat. Check the backend, then retry or start a new chat.');
   }
   if (response.status === 404) return null;
+  if (response.status === 401) throw new Error('Access expired or changed. Leave the demo and enter the access code again.');
   if (response.status === 409) throw new Error('This chat is still running. Wait a moment, then retry loading history.');
   if (!response.ok) throw new Error('Could not load saved chat. Retry or start a new chat.');
   let data;

@@ -33,11 +33,15 @@ test('posts only the latest question and decodes split UTF-8 correctly', async t
   await streamChat({
     message: '  Count matches  ', baseUrl: 'http://localhost:8000/',
     conversationId: '12345678-1234-4234-8234-123456789012',
+    token: 'test-access-token',
+    session: 'a'.repeat(64),
     onEvent: value => events.push(value),
   });
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, 'http://localhost:8000/chat/stream');
   assert.equal(options.method, 'POST');
+  assert.equal(options.headers.Authorization, 'Bearer test-access-token');
+  assert.equal(options.headers['X-Demo-Session'], 'a'.repeat(64));
   assert.deepEqual(JSON.parse(options.body), { message: 'Count matches', conversation_id: '12345678-1234-4234-8234-123456789012' });
   assert.deepEqual(events.map(item => item.event), [
     'connected', 'tool_call', 'tool_result', 'final_answer', 'complete',
@@ -76,6 +80,12 @@ test('complete without an answer is an error', async t => {
 test('HTTP failures are reported without exposing response details', async t => {
   t.mock.method(globalThis, 'fetch', async () => new Response('private traceback', { status: 502 }));
   await assert.rejects(streamChat({ message: 'Count matches', onEvent() {} }), /HTTP 502/);
+});
+
+test('expired chat token requires sign-in without retrying', async t => {
+  const request = t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 401 }));
+  await assert.rejects(streamChat({ message: 'Count', token: 'expired', onEvent() {} }), /Leave the demo/);
+  assert.equal(request.mock.callCount(), 1);
 });
 
 test('JSON responses are not mistaken for event streams', async t => {

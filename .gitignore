@@ -8,6 +8,7 @@
 *.csv
 *.db
 *.db-*
+*.db.gz
 *.sqlite
 *.sqlite-*
 *.sqlite3
@@ -28,6 +29,7 @@ __pycache__/
 htmlcov/
 /build/
 /dist/
+/runtime/
 
 # Machine-local files and logs.
 .DS_Store

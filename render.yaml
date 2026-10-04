@@ -1,0 +1,27 @@
+# Preparation only: review account billing before importing this Blueprint.
+services:
+  - type: web
+    name: tactical-time-machine-api
+    runtime: python
+    plan: free
+    autoDeployTrigger: "off"
+    buildCommand: python -m pip install -r requirements-runtime.txt && python -m scripts.install_football_db
+    startCommand: python -m src.api.serve
+    healthCheckPath: /health
+    envVars:
+      - key: AUTH_MODE
+        value: invite
+      - key: DEMO_CHAT_ENABLED
+        value: "false"
+      - key: CONVERSATION_DB_PATH
+        value: runtime/conversation_memory.db
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DEMO_ACCESS_CODE
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FOOTBALL_DB_URL
+        sync: false
+      - key: FOOTBALL_DB_SHA256
+        sync: false
