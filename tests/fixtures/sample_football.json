@@ -1,0 +1,20 @@
+{
+  "description": "Entirely fictional football records for reproducible demos and evaluation; not real player or club statistics.",
+  "tables": {
+    "clubs": [[1,"Alpha FC","SYN1"],[2,"Beta FC","SYN1"],[3,"Gamma FC","SYN1"],[4,"Delta FC","SYN1"]],
+    "players": [[1,1,"Alpha FC","Alice","Attack","Centre-Forward",100],[2,2,"Beta FC","Ben","Attack","Centre-Forward",80],[3,3,"Gamma FC","Cara","Midfield","Central Midfield",60],[4,4,"Delta FC","Dan","Defender","Centre-Back",40],[5,1,"Alpha FC","Eli","Midfield","Central Midfield",null],[6,2,"Beta FC","Fay","Goalkeeper","Goalkeeper",0]],
+    "games": [
+      [1,"SYN1",2024,"2024-01-01",1,2,"Alpha FC","Beta FC",2,0],
+      [2,"SYN1",2024,"2024-01-02",3,4,"Gamma FC","Delta FC",1,1],
+      [3,"SYN1",2024,"2024-01-03",2,3,"Beta FC","Gamma FC",3,1],
+      [4,"SYN1",2024,"2024-01-04",4,1,"Delta FC","Alpha FC",0,1],
+      [5,"SYN1",2024,"2024-01-05",1,3,"Alpha FC","Gamma FC",2,2],
+      [6,"SYN1",2024,"2024-01-06",2,4,"Beta FC","Delta FC",0,0],
+      [7,"SYN1",2025,"2025-02-01",1,4,"Alpha FC","Delta FC",1,0],
+      [8,"SYN2",2025,"2025-02-02",3,2,"Gamma FC","Beta FC",0,2]
+    ],
+    "appearances": [[1,1,"2024-01-01",2,0,0,0,90],[2,1,"2024-01-01",0,0,1,0,80],[3,2,"2024-01-02",1,0,0,0,90],[4,2,"2024-01-02",1,0,1,0,90],[2,3,"2024-01-03",2,1,0,0,90],[3,3,"2024-01-03",1,0,1,0,90],[1,4,"2024-01-04",1,0,0,0,70],[5,5,"2024-01-05",0,1,0,1,20]],
+    "transfers": [["Alice","2024-01-01","Beta FC","Alpha FC",100,100],["Ben","2024-01-02","Gamma FC","Beta FC",0,80],["Eli","2024-01-03","Delta FC","Alpha FC",null,null]],
+    "player_valuations": [[1,"2023-12-01",80,"Alpha FC"],[1,"2024-01-01",100,"Alpha FC"],[2,"2023-12-01",70,"Beta FC"],[2,"2024-01-01",80,"Beta FC"]]
+  }
+}

@@ -1,3 +1,5 @@
+// HTTP bridge: POST one new question, consume SSE, and notify App through onEvent.
+// fetch is used because this streaming endpoint needs a POST body and auth headers.
 import { createSseParser } from './sse.js';
 import { validateToolResult } from '../results.js';
 
@@ -51,6 +53,7 @@ export async function streamChat({ message, conversationId, onEvent, signal, tok
     throw new Error('The server did not return an event stream. Check the API address.');
   }
 
+  // Network chunks are bytes, not whole events: decode UTF-8 before SSE parsing.
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let completed = false;

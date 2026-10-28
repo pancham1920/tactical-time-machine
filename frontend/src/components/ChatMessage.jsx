@@ -1,3 +1,5 @@
+// Render one App-owned message: SQL results first, then the assistant's plain text.
+// Partial results remain visible with a warning if the response was interrupted.
 export default function ChatMessage({ message }) {
   const isUser = message.role === 'user';
   return (

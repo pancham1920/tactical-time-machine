@@ -1,4 +1,6 @@
 """Select a bounded view of checkpoint history without changing stored messages."""
+# graph.py calls this before Gemini. Keep whole exchanges, not arbitrary last-N
+# messages: a tool result without its matching request is invalid model context.
 
 import json
 import os
@@ -31,6 +33,7 @@ def message_size(message: BaseMessage) -> int:
 
 
 def valid_turn(turn: Sequence[BaseMessage], *, completed: bool) -> bool:
+    # pending tracks unanswered tool-call IDs; seen rejects reuse of a call ID.
     if not turn or not isinstance(turn[0], HumanMessage):
         return False
     pending = set()
@@ -76,6 +79,7 @@ def select_model_messages(messages: Sequence[BaseMessage], budget: int) -> list[
     used = sum(message_size(message) for message in current)
     if used > budget:
         raise ContextLimitError(CONTEXT_LIMIT_MESSAGE)
+    # Always retain the current question; add recent complete turns while they fit.
     selected = [current]
     for turn in reversed(turns[:-1]):
         # Do not cross an interrupted turn or a budget gap: this avoids pretending

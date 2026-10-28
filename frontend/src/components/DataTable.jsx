@@ -1,3 +1,5 @@
+// Generic SQL table: columns determine order; each row is an object keyed by column.
+// Display only data passed by ResultView; this component never queries the backend.
 import { columnLabel, formatValue } from '../results.js';
 
 export default function DataTable({ columns, rows }) {

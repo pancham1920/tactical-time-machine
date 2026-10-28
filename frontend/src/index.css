@@ -1,5 +1,9 @@
+/* App-wide presentation, imported once by main.jsx. JSX className values connect
+   components to these selectors; Tailwind supplies additional utility classes.
+   Styling changes appearance/layout, not authentication or agent behavior. */
 @import "tailwindcss";
 
+/* SQL result components: containers, scrolling tables, stat cards and charts. */
 .query-result { margin: 16px 0; border: 1px solid #ffffff20; border-radius: 10px; padding: 14px; min-width: 0; }
 .query-result h3 { margin: 0 0 12px; font-size: 12px; font-weight: 600; }
 .query-result h3 span { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 400; color: #a3b0a5; }
@@ -104,3 +108,4 @@ h1 span { color: #9eac9d; }
 .account-bar { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; padding: .5rem 1rem; }
 .authenticated-shell { height: 100dvh; display: flex; flex-direction: column; }
 .authenticated-shell .app-shell { flex: 1; height: auto; min-height: 0; }
+.sample-banner { position: fixed; top: 0; left: 0; width: 100%; z-index: 10; background: #f5cf72; color: #172417; text-align: center; padding: 5px; font-size: 11px; font-weight: 700; }

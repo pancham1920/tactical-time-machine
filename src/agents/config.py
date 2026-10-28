@@ -1,3 +1,5 @@
+# Model-client factory used by graph.py: read backend settings and construct a client.
+# Construction alone does not ask Gemini a question; invoke/ainvoke does that later.
 import os
 
 from dotenv import load_dotenv
@@ -18,6 +20,8 @@ def get_llm_client():
 
     # Default to Flash for local smoke tests; set GEMINI_MODEL=gemini-2.5-pro
     # in .env when you need stronger text-to-SQL reasoning.
+    # Low temperature reduces sampling variability, but cannot guarantee correct SQL.
+    # Provider retries are disabled; SQL correction is a separate graph-level feature.
     llm = ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         google_api_key=api_key,

@@ -1,3 +1,5 @@
+// Visualize category/value rows already approved by chooseDisplay in results.js.
+// Rename Recharts' BarChart import so it does not clash with our component's name.
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { columnLabel, formatValue } from '../results.js';
 

@@ -1,4 +1,6 @@
 """Application-owned SQLite checkpoint connection; never exposed as a SQL tool."""
+# main.py opens this at startup and passes the saver to graph.py. LangGraph handles
+# saving/restoring state by thread_id; history.py separately shapes it for the UI.
 
 from contextlib import asynccontextmanager
 import os
@@ -19,11 +21,15 @@ def checkpoint_path() -> Path:
     if not path.is_absolute():
         path = PROJECT_ROOT / path
     path = path.resolve()
-    football = PROJECT_ROOT / "football_vault.db"
-    if path == football.resolve() or (
-        path.exists() and football.exists() and path.samefile(football)
-    ):
-        raise ValueError("Conversation storage must be separate from football data.")
+    configured_football = Path(os.getenv("FOOTBALL_DB_PATH", "football_vault.db"))
+    if not configured_football.is_absolute():
+        configured_football = PROJECT_ROOT / configured_football
+    # Protect both original and sample data, including paths pointing to the same file.
+    for football in (PROJECT_ROOT / "football_vault.db", configured_football):
+        if path == football.resolve() or (
+            path.exists() and football.exists() and path.samefile(football)
+        ):
+            raise ValueError("Conversation storage must be separate from football data.")
     if path.is_dir():
         raise ValueError("CONVERSATION_DB_PATH must name a file, not a directory.")
     return path
@@ -36,4 +42,6 @@ async def open_checkpointer(path: Path | None = None):
     async with AsyncSqliteSaver.from_conn_string(str(database)) as saver:
         # A startup read initializes storage through the saver before serving traffic.
         await saver.aget_tuple({"configurable": {"thread_id": "__startup__"}})
+        # Context-manager yield lends the open saver to the caller, not an SSE event.
+        # Exiting the caller's async-with block lets the inner context close storage.
         yield saver

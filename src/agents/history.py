@@ -1,9 +1,12 @@
 """Project checkpoint messages into UI data, never raw graph/internal state."""
+# Used by GET /conversations/{id}. Reading history does not call Gemini.
+# Many internal messages (tool request/results/final answer) become one UI response.
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 def visible_text(content) -> str:
+    # Providers may return plain text or typed blocks; expose only visible text blocks.
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -22,6 +25,7 @@ def conversation_messages(messages, format_result) -> list[dict]:
             turn_id = str(message.id or f"turn-{index}")
             output.append({"id": f"user-{turn_id}", "role": "user",
                            "content": visible_text(message.content)})
+            # Default to incomplete until a final AI answer proves the turn finished.
             assistant = {"id": f"assistant-{turn_id}", "role": "assistant",
                          "content": "", "results": [], "status": "error"}
             output.append(assistant)

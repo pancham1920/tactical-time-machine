@@ -1,3 +1,5 @@
+# Orchestrator: model -> guarded SQL tools -> model, until a final answer or safe stop.
+# main.py supplies a checkpointer for persistent API conversations; CLI can omit it.
 from typing import Annotated, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -23,6 +25,7 @@ class AgentState(TypedDict):
 
 # 2. Define the Execution Node
 def call_model(state: AgentState):
+    # bind_tools describes available calls to Gemini; it does not execute SQL itself.
     llm = get_llm_client().bind_tools(TOOLS)
     response = llm.invoke(model_messages(state))
 
@@ -30,6 +33,7 @@ def call_model(state: AgentState):
 
 
 def model_messages(state: AgentState):
+    # Prepare a bounded input view without deleting any persisted conversation state.
     # Reserve room for the system prompt and tool schemas/serialization overhead.
     remaining = context_budget() - len(SYSTEM_PROMPT) - 8000
     messages = select_model_messages(state["messages"], remaining)
@@ -37,6 +41,7 @@ def model_messages(state: AgentState):
 
 
 async def acall_model(state: AgentState):
+    # Await model I/O so the API event loop can handle other work while waiting.
     llm = get_llm_client().bind_tools(TOOLS)
     response = await llm.ainvoke(model_messages(state))
     return {"messages": [response]}
@@ -55,6 +60,7 @@ def should_continue(state: AgentState):
 
 
 def build_agent(checkpointer=None):
+    # Building describes nodes/edges; the workflow runs only when invoked or streamed.
     workflow = StateGraph(AgentState)
     # The API uses the async implementation; the CLI can still invoke synchronously.
     workflow.add_node("agent", RunnableLambda(call_model, afunc=acall_model))

@@ -1,4 +1,6 @@
 """Deterministic per-question SQL limits, independent of model compliance."""
+# graph.py's tools node delegates here. Recoverable SQL errors return to Gemini;
+# unsafe queries, unavailable storage, repeated failures and limits stop the loop.
 
 import json
 import re
@@ -18,6 +20,7 @@ STOP_TEXT = {
 
 
 def current_turn(messages):
+    # Previous questions must not consume this question's retry/tool allowance.
     start = next((i for i in range(len(messages) - 1, -1, -1) if isinstance(messages[i], HumanMessage)), 0)
     return messages[start:]
 
@@ -41,6 +44,7 @@ def result_data(message):
 
 
 def retry_state(messages):
+    # Reconstruct counters from messages, so limits survive checkpoint restoration.
     calls = {}
     failed = set()
     count = 0
@@ -107,11 +111,13 @@ def guarded_tools(state):
             data = {"error": "Query not executed: SQL recovery stopped.", "retryable": False}
         if stop:
             data = {**data, "stop_reason": stop, "retryable": False}
+        # Even skipped calls get matching results, preserving complete tool-call pairs.
         outputs.append(ToolMessage(content=json.dumps(data), tool_call_id=call["id"], name=call["name"]))
     return {"messages": outputs}
 
 
 def after_tools(state):
+    # This router returns an edge label; graph.py maps it to the next node.
     for message in reversed(state["messages"]):
         if not isinstance(message, ToolMessage):
             break
@@ -121,5 +127,6 @@ def after_tools(state):
 
 
 def stop_sql(state):
+    # Use a fixed explanation instead of another model call after recovery stops.
     reason = result_data(state["messages"][-1]).get("stop_reason", "database_error")
     return {"messages": [AIMessage(content=STOP_TEXT.get(reason, STOP_TEXT["database_error"]))]}

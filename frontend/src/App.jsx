@@ -1,3 +1,5 @@
+// Chat coordinator: input -> streamChat -> event-driven state updates -> ChatMessage.
+// Network/parsing helpers live in api/; this component owns what the user sees.
 import { useEffect, useRef, useState } from 'react';
 import { streamChat } from './api/chat.js';
 import ChatInput from './components/ChatInput.jsx';
@@ -12,6 +14,7 @@ const SUGGESTIONS = [
 ];
 
 export default function App({ userId = 'local', access = null }) {
+  // Keep each access session's conversation pointer separate in browser storage.
   const storageKey = userId === 'local' ? CONVERSATION_KEY : `${CONVERSATION_KEY}:${userId}`;
   const [messages, setMessages] = useState([]);
   const [initial] = useState(() => initialConversation(storageKey));
@@ -23,6 +26,8 @@ export default function App({ userId = 'local', access = null }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
+  // State triggers rendering; refs retain mutable request handles without rendering.
+  // AbortController supports Stop, unmount cleanup, and avoiding stale responses.
   const controllerRef = useRef(null);
   const historyControllerRef = useRef(null);
   const scrollEnd = useRef(null);
@@ -33,6 +38,7 @@ export default function App({ userId = 'local', access = null }) {
   }, [conversationId, storageKey]);
 
   useEffect(() => {
+    // A stored ID is only a pointer: fetch the visible history from the backend.
     if (!restoreNeeded) return;
     const controller = new AbortController();
     historyControllerRef.current = controller;
@@ -55,6 +61,7 @@ export default function App({ userId = 'local', access = null }) {
     return () => controller.abort();
   }, [conversationId, restoreNeeded, historyAttempt, access]);
 
+  // A fresh ID starts fresh context, but does not erase the previous checkpoint.
   function startNewChat() {
     if (controllerRef.current) return;
     historyControllerRef.current?.abort();
@@ -75,6 +82,8 @@ export default function App({ userId = 'local', access = null }) {
     scrollEnd.current?.scrollIntoView({ block: 'end', behavior: 'instant' });
   }, [messages, progress, error]);
 
+  // Create a user message and an empty assistant message before the network call.
+  // Each streamed event updates that assistant by ID rather than creating duplicates.
   async function handleSend(message) {
     const question = message.trim();
     // The ref closes the gap before React has rendered the disabled button.
@@ -104,6 +113,7 @@ export default function App({ userId = 'local', access = null }) {
         signal: controller.signal,
         onEvent: ({ event, data }) => {
           if (controllerRef.current !== controller) return;
+          // Functional updates use the latest state even when events arrive rapidly.
           setMessages(previous => updateAssistant(previous, assistantId, event, data));
           if (event === 'connected') setProgress('Analyzing your question…');
           if (event === 'tool_call') setProgress('Querying football data…');
@@ -131,6 +141,7 @@ export default function App({ userId = 'local', access = null }) {
 
   return (
     <div className="app-shell">
+      {import.meta.env.VITE_SAMPLE_DATA === 'true' && <div className="sample-banner">FICTIONAL SAMPLE DATA · Not real football statistics</div>}
       <aside className="sidebar">
         <a className="brand" href="./" aria-label="Tactical Time-Machine home">
           <span className="brand-mark" aria-hidden="true">T<span>↗</span></span>

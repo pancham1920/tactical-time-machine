@@ -1,3 +1,5 @@
+// Shared by networking and UI: validate SQL data, choose a display, format values,
+// and update the correct assistant message. No network requests happen here.
 // Keep API validation and display decisions pure so they are easy to test.
 export function validateToolResult(data) {
   const invalid = () => { throw new Error('The server returned an invalid database result.'); };
@@ -26,6 +28,7 @@ export function columnLabel(column) {
   return column.replaceAll('_', ' ');
 }
 
+// Preserve the distinction between missing values and zero; infer euros only by name.
 export function formatValue(value, column = '') {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'number') {
@@ -42,6 +45,8 @@ export function formatValue(value, column = '') {
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const identifier = column => /(^|_)id$|^year$|^season$/.test(column);
 
+// Conservative rules select a stat/chart only when data shape is suitable.
+// The model does not generate React components; everything else falls back to a table.
 export function chooseDisplay({ columns, rows, error, truncated }) {
   if (error) return { kind: 'error' };
   if (!rows.length) return { kind: 'empty' };
@@ -60,6 +65,7 @@ export function chooseDisplay({ columns, rows, error, truncated }) {
   return { kind: 'table' };
 }
 
+// Return new objects (React-friendly immutable updates); leave other messages alone.
 export function updateAssistant(messages, id, event, data) {
   return messages.map(message => {
     if (message.id !== id) return message;

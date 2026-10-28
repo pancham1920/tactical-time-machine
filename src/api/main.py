@@ -1,4 +1,6 @@
 """FastAPI application entry point for the football agent backend."""
+# Request flow: security middleware -> validated ChatRequest -> LangGraph -> response.
+# /chat returns one JSON answer; /chat/stream yields events consumed by frontend/api/chat.js.
 
 from collections.abc import AsyncIterator
 from contextlib import aclosing, asynccontextmanager
@@ -23,6 +25,8 @@ from src.api.security import SecurityMiddleware, owned_thread, auth_mode, access
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup opens memory and compiles one application-owned agent. The bare yield
+    # keeps those resources alive while serving; exiting the context closes memory.
     context_budget()  # Fail early on invalid configuration.
     if auth_mode() == "invite":
         access_code()
@@ -59,6 +63,7 @@ class ChatRequest(BaseModel):
 
 
 def thread_config(conversation_id: str) -> dict:
+    # LangGraph uses thread_id to locate saved state; this is not an LLM prompt field.
     return {"configurable": {"thread_id": conversation_id}}
 
 
@@ -69,6 +74,7 @@ def reserve_conversation(request: Request, body: ChatRequest) -> str:
 
 
 def request_thread(request: Request, conversation_id: str) -> str:
+    # Map the browser's public ID into the authenticated session's storage namespace.
     return owned_thread(request.state.user_id, conversation_id)
 
 
@@ -81,6 +87,7 @@ def acquire_conversation(active: set, conversation_id: str):
 
 async def stream_agent_updates(agent, message: str, conversation_id: str) -> AsyncIterator[dict]:
     """Yield each LangGraph update produced while answering one message."""
+    # Send only the NEW question. The checkpointer restores existing thread state.
     input_state = {"messages": [HumanMessage(content=message)]}
 
     async with aclosing(agent.astream(input_state, thread_config(conversation_id), stream_mode="updates")) as updates:
@@ -124,6 +131,8 @@ def tool_result_payload(message) -> dict:
 
 async def stream_sse_events(agent, message: str, conversation_id: str, internal_id: str | None = None) -> AsyncIterator[str]:
     """Convert LangGraph updates into browser-readable SSE events."""
+    # This is an async generator: each yield supplies the next response fragment.
+    # These are workflow events, not hidden reasoning or token-by-token model output.
     yield format_sse_event("connected", {"message": "Agent started", "conversation_id": conversation_id})
 
     try:
@@ -148,6 +157,7 @@ async def stream_sse_events(agent, message: str, conversation_id: str, internal_
     except Exception:
         yield format_sse_event("error", {"message": "The football agent could not complete this request."})
     else:
+        # try/except/else reaches here only on success: errors must not claim completion.
         yield format_sse_event("complete", {})
 
 

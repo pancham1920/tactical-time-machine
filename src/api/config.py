@@ -1,4 +1,6 @@
 """Environment settings for the HTTP boundary, separate from model settings."""
+# Used by main.py's CORS middleware. An origin is scheme + host + optional port.
+# CORS controls browser cross-origin access; it is not user authentication.
 
 import os
 from urllib.parse import urlsplit

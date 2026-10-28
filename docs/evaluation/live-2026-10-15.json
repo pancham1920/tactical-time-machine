@@ -1,0 +1,410 @@
+{
+  "started_utc": "2026-10-15T18:19:53.807524+00:00",
+  "model": "gemini-2.5-flash",
+  "dataset": "fictional sample_football.json",
+  "database_sha256": "dde101143d7148504b9f3a0c5ff0e0d61b17596461ef6983653b823c2d9b8720",
+  "case_file_sha256": "59c32313f8a5bc5b16ba7cf7e2074cff7b68e91fb3dd8494c33bba3168caedcb",
+  "gold_verified": 40,
+  "method": "Single-turn scalar questions; gold SQL is NOT sent to the model. Exact final RESULT numeric value, not prose faithfulness. SQL execution is scored separately. No model retries; stop on provider/runtime error.",
+  "results": [
+    {
+      "id": "matches",
+      "question": "How many matches are in agent_match_view?",
+      "expected": 8,
+      "status": "completed",
+      "answer": "There are 8 matches in the `agent_match_view`.\nRESULT: 8",
+      "tool_results": 1,
+      "sql_successes": 1,
+      "answer_correct": true,
+      "events": [
+        {
+          "event": "tool_call",
+          "data": {
+            "tools": [
+              "execute_sql"
+            ]
+          }
+        },
+        {
+          "event": "tool_result",
+          "data": {
+            "tool_call_id": "dbdd7eb0-cad0-4c2f-894e-fb690735b8ec",
+            "tool": "execute_sql",
+            "result": {
+              "columns": [
+                "COUNT(*)"
+              ],
+              "rows": [
+                {
+                  "COUNT(*)": 8
+                }
+              ],
+              "truncated": false
+            }
+          }
+        },
+        {
+          "event": "final_answer",
+          "data": {
+            "answer": "There are 8 matches in the `agent_match_view`.\nRESULT: 8"
+          }
+        },
+        {
+          "event": "complete",
+          "data": {}
+        }
+      ],
+      "generated_sql": [
+        "SELECT COUNT(*) FROM agent_match_view;"
+      ],
+      "latency_seconds": 3.668
+    },
+    {
+      "id": "clubs",
+      "question": "How many clubs are recorded?",
+      "expected": 4,
+      "status": "completed",
+      "answer": "There are 4 clubs recorded in the database.\nRESULT: 4",
+      "tool_results": 1,
+      "sql_successes": 1,
+      "answer_correct": true,
+      "events": [
+        {
+          "event": "tool_call",
+          "data": {
+            "tools": [
+              "execute_sql"
+            ]
+          }
+        },
+        {
+          "event": "tool_result",
+          "data": {
+            "tool_call_id": "8dcf1255-0531-4d8f-83a3-def9fa8ed98e",
+            "tool": "execute_sql",
+            "result": {
+              "columns": [
+                "COUNT(DISTINCT club_id)"
+              ],
+              "rows": [
+                {
+                  "COUNT(DISTINCT club_id)": 4
+                }
+              ],
+              "truncated": false
+            }
+          }
+        },
+        {
+          "event": "final_answer",
+          "data": {
+            "answer": "There are 4 clubs recorded in the database.\nRESULT: 4"
+          }
+        },
+        {
+          "event": "complete",
+          "data": {}
+        }
+      ],
+      "generated_sql": [
+        "SELECT COUNT(DISTINCT club_id) FROM clubs;"
+      ],
+      "latency_seconds": 2.863
+    },
+    {
+      "id": "players",
+      "question": "How many players are recorded?",
+      "expected": 6,
+      "status": "completed",
+      "answer": "There are 6 players recorded in the database.\nRESULT: 6",
+      "tool_results": 1,
+      "sql_successes": 1,
+      "answer_correct": true,
+      "events": [
+        {
+          "event": "tool_call",
+          "data": {
+            "tools": [
+              "execute_sql"
+            ]
+          }
+        },
+        {
+          "event": "tool_result",
+          "data": {
+            "tool_call_id": "a2587968-bc71-49d2-982d-01cb6f837822",
+            "tool": "execute_sql",
+            "result": {
+              "columns": [
+                "COUNT(player_id)"
+              ],
+              "rows": [
+                {
+                  "COUNT(player_id)": 6
+                }
+              ],
+              "truncated": false
+            }
+          }
+        },
+        {
+          "event": "final_answer",
+          "data": {
+            "answer": "There are 6 players recorded in the database.\nRESULT: 6"
+          }
+        },
+        {
+          "event": "complete",
+          "data": {}
+        }
+      ],
+      "generated_sql": [
+        "SELECT COUNT(player_id) FROM players;"
+      ],
+      "latency_seconds": 3.154
+    },
+    {
+      "id": "season2024",
+      "question": "How many games have season 2024?",
+      "expected": 6,
+      "status": "error",
+      "answer": "",
+      "tool_results": 0,
+      "sql_successes": 0,
+      "answer_correct": false,
+      "events": [],
+      "generated_sql": [],
+      "failure": "provider_quota",
+      "latency_seconds": 0.703
+    },
+    {
+      "id": "season2025",
+      "question": "How many games have season 2025?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "syn2",
+      "question": "How many games have competition_id SYN2?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "home_goals",
+      "question": "What is the total home-team goals across all games?",
+      "expected": 9,
+      "status": "not_run"
+    },
+    {
+      "id": "away_goals",
+      "question": "What is the total away-team goals across all games?",
+      "expected": 7,
+      "status": "not_run"
+    },
+    {
+      "id": "total_goals",
+      "question": "How many goals were scored by both teams across all games?",
+      "expected": 16,
+      "status": "not_run"
+    },
+    {
+      "id": "draws",
+      "question": "How many games ended in draws?",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "home_wins",
+      "question": "How many games were won by the home team?",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "away_wins",
+      "question": "How many games were won by the away team?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "scoreless",
+      "question": "How many games ended 0-0?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "alpha_games",
+      "question": "How many matches involve Alpha FC, home or away?",
+      "expected": 4,
+      "status": "not_run"
+    },
+    {
+      "id": "alpha_wins",
+      "question": "How many matches did Alpha FC win, home or away?",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "alpha_points",
+      "question": "Using three points for a win and one for a draw, how many points did Alpha FC earn across its recorded matches?",
+      "expected": 10,
+      "status": "not_run"
+    },
+    {
+      "id": "avg_goals",
+      "question": "What is the average total goals per match across all games?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "max_goals",
+      "question": "What is the largest combined goal total in a single game?",
+      "expected": 4,
+      "status": "not_run"
+    },
+    {
+      "id": "missing_club",
+      "question": "How many recorded matches involve Fictional Club ZZZ-987654?",
+      "expected": 0,
+      "status": "not_run"
+    },
+    {
+      "id": "after_date",
+      "question": "How many games were played on or after 2025-01-01?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "null_values",
+      "question": "How many players have a missing market_value_in_eur?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "zero_values",
+      "question": "How many players have a recorded market value of exactly zero, excluding missing values?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "sum_values",
+      "question": "What is the total recorded player market value in euros, ignoring missing values?",
+      "expected": 280,
+      "status": "not_run"
+    },
+    {
+      "id": "average_value",
+      "question": "What is the average player market value in euros, excluding missing values but including zero?",
+      "expected": 56,
+      "status": "not_run"
+    },
+    {
+      "id": "top_value",
+      "question": "What is the highest player market value in euros?",
+      "expected": 100,
+      "status": "not_run"
+    },
+    {
+      "id": "alpha_players",
+      "question": "How many players have current_club_name Alpha FC?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "appearances",
+      "question": "How many appearance records are there?",
+      "expected": 8,
+      "status": "not_run"
+    },
+    {
+      "id": "appearing_players",
+      "question": "How many distinct players have an appearance record?",
+      "expected": 5,
+      "status": "not_run"
+    },
+    {
+      "id": "no_appearances",
+      "question": "How many recorded players have no appearance records?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "appearance_goals",
+      "question": "What is the sum of goals across appearance records?",
+      "expected": 8,
+      "status": "not_run"
+    },
+    {
+      "id": "assists",
+      "question": "What is the sum of assists across appearance records?",
+      "expected": 2,
+      "status": "not_run"
+    },
+    {
+      "id": "minutes",
+      "question": "What is the total minutes played across appearance records?",
+      "expected": 620,
+      "status": "not_run"
+    },
+    {
+      "id": "alice_goals",
+      "question": "How many goals does Alice have in appearance records? Join players to appearances by player_id.",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "red_cards",
+      "question": "What is the total red cards in appearance records?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "yellow_cards",
+      "question": "What is the total yellow cards in appearance records?",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "transfers",
+      "question": "How many transfer records are there?",
+      "expected": 3,
+      "status": "not_run"
+    },
+    {
+      "id": "transfer_fees",
+      "question": "What is the sum of recorded transfer_fee values, excluding missing values?",
+      "expected": 100,
+      "status": "not_run"
+    },
+    {
+      "id": "free_transfers",
+      "question": "How many transfers have transfer_fee exactly zero, excluding missing fees?",
+      "expected": 1,
+      "status": "not_run"
+    },
+    {
+      "id": "valuations",
+      "question": "How many player valuation history records are there?",
+      "expected": 4,
+      "status": "not_run"
+    },
+    {
+      "id": "alice_value_change",
+      "question": "By how many euros did Alice's recorded valuation change from 2023-12-01 to 2024-01-01? Join players and player_valuations by player_id.",
+      "expected": 20,
+      "status": "not_run"
+    }
+  ],
+  "summary": {
+    "planned": 40,
+    "attempted": 4,
+    "completed": 3,
+    "exact_numeric_answers_correct": 3,
+    "answer_correctness_of_attempted": 0.75,
+    "questions_with_successful_sql": 3,
+    "sql_execution_success_rate": 1.0,
+    "tool_results": 3,
+    "median_latency_seconds": 3.0084999999999997,
+    "p95_latency_seconds": 3.668
+  },
+  "finished_utc": "2026-10-15T18:20:34.209585+00:00"
+}

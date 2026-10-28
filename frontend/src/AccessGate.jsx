@@ -1,9 +1,14 @@
+// UI access gate: collect an invitation code, verify it with /access, then show App.
+// Backend middleware remains the security boundary; hiding UI alone is not security.
 import { useState } from 'react';
 import App from './App.jsx';
 
 const STORAGE_KEY = 'football-demo-access';
+// Production builds cannot use this development-only bypass.
 const local = Boolean(import.meta.env.DEV && import.meta.env.VITE_AUTH_MODE === 'local');
 
+// Restore tab-local credentials after refresh. Shape validation is NOT server approval;
+// the backend checks these credentials again on protected API requests.
 function savedAccess() {
   try {
     const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY));
@@ -13,14 +18,17 @@ function savedAccess() {
 }
 
 export default function AccessGate() {
+  // Passing the function lets React initialize state from storage on mounting.
   const [access, setAccess] = useState(savedAccess);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Form submit -> check code -> save credentials -> state change re-renders the gate.
   async function enter(event) {
     event.preventDefault();
     setBusy(true);
     setError('');
+    // Random browser-session identity, not a JWT or replacement for the invitation code.
     const session = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
     try {
       const base = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -35,10 +43,12 @@ export default function AccessGate() {
     } catch (failure) { setError(failure.message || 'Could not access the demo.'); }
     finally { setBusy(false); }
   }
+  // Leaving removes local access; it does not delete backend conversation records.
   function leave() {
     try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* Clear in-memory access too. */ }
     setAccess(null);
   }
+  // Three render paths: local bypass, invitation form, or authenticated chat shell.
   if (local) return <App />;
   if (!access) return <main className="auth-panel">
     <h1>Tactical Time-Machine</h1>

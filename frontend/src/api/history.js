@@ -1,9 +1,12 @@
+// Refresh recovery: keep only a conversation ID in the browser, then fetch messages.
+// This module restores the visible UI; LangGraph separately restores model context.
 import { validateToolResult } from '../results.js';
 
 export const CONVERSATION_KEY = 'football-agent.conversation.v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
+// Reuse a valid saved ID or create a new one; neither operation calls the backend.
 export function initialConversation(storageKey = CONVERSATION_KEY) {
   try {
     const id = sessionStorage.getItem(storageKey);
@@ -12,6 +15,7 @@ export function initialConversation(storageKey = CONVERSATION_KEY) {
   return { id: crypto.randomUUID(), restore: false };
 }
 
+// Treat server JSON as untrusted input before placing it into React state.
 export function validateHistory(data, conversationId) {
   const invalid = () => { throw new Error('The saved conversation could not be read. Retry or start a new chat.'); };
   if (!data || data.conversation_id !== conversationId || !Array.isArray(data.messages)) invalid();
@@ -28,6 +32,7 @@ export function validateHistory(data, conversationId) {
   return messages;
 }
 
+// null means history is absent (404), while other failures remain explicit errors.
 export async function loadConversation(conversationId, { signal, token, session, baseUrl = BASE_URL } = {}) {
   let response;
   try {

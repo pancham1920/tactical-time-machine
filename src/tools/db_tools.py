@@ -1,8 +1,11 @@
 """Database execution and structured SQL-error classification."""
+# Tool boundary: generated SQL -> validation -> read-only SQLite -> JSON tool result.
+# Used by sql_retry.py; neither the browser nor Gemini connects directly to SQLite.
 
 from pathlib import Path
 import json
 import re
+import os
 import sqlite3
 import time
 
@@ -27,10 +30,16 @@ WRITE_KEYWORDS = re.compile(
 
 def get_database_engine() -> Engine:
     """Create a SQLAlchemy engine that connects to the local SQLite database."""
-    if not DATABASE_PATH.is_file():
+    configured = os.getenv("FOOTBALL_DB_PATH")
+    path = Path(configured) if configured else DATABASE_PATH
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    if not path.is_file():
         raise FileNotFoundError("Football database is missing; seed it before querying.")
     def connect():
-        connection = sqlite3.connect(DATABASE_PATH.resolve().as_uri() + "?mode=ro", uri=True,
+        # Defense in depth: regex screening is only the first layer. SQLite enforces
+        # read-only access, allowed operations, size limits and a progress deadline.
+        connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True,
                                      timeout=2, check_same_thread=False)
         connection.execute("PRAGMA query_only=ON")
         connection.execute("PRAGMA temp_store=MEMORY")
@@ -117,6 +126,7 @@ def run_query(query: str) -> dict[str, object]:
         engine = get_database_engine()
         with engine.connect() as connection:
             result = connection.execute(text(query))
+            # Fetch one extra row to detect truncation without returning an unbounded set.
             rows = [
                 dict(row)
                 for row in result.mappings().fetchmany(MAX_ROWS + 1)
@@ -140,6 +150,8 @@ def format_query_results(result: dict[str, object]) -> str:
     return json.dumps({"columns": columns, **result}, default=str)
 
 
+# LangChain exposes the signature/docstring as a tool schema for model function calls.
+# The graph still decides when to execute the tool; the decorator is not a scheduler.
 @tool
 def execute_sql(query: str) -> str:
     """Run one read-only SQLite query against the football database.

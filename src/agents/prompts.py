@@ -1,4 +1,7 @@
 """Analyst instructions, kept separate from schema for easy review and testing."""
+# These strings become the SystemMessage in graph.py: persona, schema and behavior.
+# They guide the model; db_tools.py and sql_retry.py enforce limits in actual code.
+# Comments outside the strings are for developers and are not sent to Gemini.
 
 ANALYST_PERSONA = """
 You are the Tactical Time-Machine football analyst, using a local SQLite dataset.

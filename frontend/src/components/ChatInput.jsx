@@ -1,3 +1,4 @@
+// Own only the draft text. Submit via the onSend prop; App performs the API call.
 import { useEffect, useId, useRef, useState } from 'react';
 
 export default function ChatInput({ disabled, onSend }) {
@@ -6,11 +7,13 @@ export default function ChatInput({ disabled, onSend }) {
   const textarea = useRef(null);
   const wasDisabled = useRef(disabled);
 
+  // Return focus to the composer when a request finishes and input becomes enabled.
   useEffect(() => {
     if (wasDisabled.current && !disabled) textarea.current?.focus();
     wasDisabled.current = disabled;
   }, [disabled]);
 
+  // Both Enter and the Send button use this path; prevent the default page reload.
   function submit(event) {
     event.preventDefault();
     const question = draft.trim();

@@ -1,4 +1,7 @@
 """Invite-code verification and bounded, single-worker demo admission."""
+# Runs before endpoints. AccessGate supplies the shared code and browser session;
+# this backend validates them and assigns the request identity used for checkpoints.
+# This is invitation-based demo access, not individual user accounts or JWT login.
 
 import hashlib
 import hmac
@@ -28,6 +31,7 @@ def access_code() -> str:
 
 
 def verify_access(token: str, session: str) -> str:
+    # Compare secrets using a timing-resistant primitive, then derive an internal ID.
     secret = access_code()
     if not hmac.compare_digest(token.encode(), secret.encode()) or not re.fullmatch(r"[a-f0-9]{64}", session):
         raise HTTPException(401, "Invalid access code or browser session.")
@@ -67,6 +71,8 @@ class SecurityMiddleware:
         self.chat_users = set()
 
     async def __call__(self, scope, receive, send):
+        # ASGI interface: scope describes the request; receive/send move HTTP messages.
+        # Wrapping send preserves streaming rather than buffering the entire response.
         if scope["type"] != "http" or scope["path"] == "/health" or scope["method"] == "OPTIONS":
             return await self.app(scope, receive, send)
         try:
@@ -146,6 +152,7 @@ class SecurityMiddleware:
                 # End an already-started stream as interrupted, never claim completion.
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
         finally:
+            # Release admission slots on success, exceptions, and cancellation alike.
             if chat_owner:
                 self.chat_users.discard(chat_owner)
             self.inflight -= 1

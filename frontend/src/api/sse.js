@@ -1,9 +1,12 @@
+// Used by chat.js, independent of React. A blank line terminates an SSE event;
+// event: names it and data: contains this application's JSON payload.
 /** Parse SSE text incrementally. One network chunk can contain partial events. */
 export function createSseParser(onEvent) {
   let buffer = '';
   let eventName = '';
   let dataLines = [];
 
+  // Accumulate fields until the blank separator, then invoke the caller's callback.
   function acceptLine(line) {
     if (line === '') {
       if (dataLines.length) {
@@ -28,6 +31,7 @@ export function createSseParser(onEvent) {
     if (field === 'data') dataLines.push(value);
   }
 
+  // Consume only complete lines, retaining unfinished text for the next chunk.
   function drain(final = false) {
     while (true) {
       const newline = buffer.search(/[\r\n]/);

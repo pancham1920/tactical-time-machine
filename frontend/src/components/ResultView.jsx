@@ -1,8 +1,11 @@
+// Render one SQL tool result using results.js rules, not model-generated UI code.
 import { lazy, Suspense } from 'react';
 import { chooseDisplay } from '../results.js';
 import DataTable from './DataTable.jsx';
 import StatCard from './StatCard.jsx';
 
+// Download chart code only when needed; Suspense shows a temporary loading message.
+// Chart results also render a table so exact values remain accessible.
 const BarChart = lazy(() => import('./BarChart.jsx'));
 
 export default function ResultView({ payload, index }) {

@@ -1,4 +1,6 @@
 """Hosted entry point: run from the repository root with python -m src.api.serve."""
+# Hosting startup wrapper, not an endpoint. For local learning use loopback Uvicorn.
+# One worker matches the process-local rate limits and active-conversation guards.
 
 import os
 

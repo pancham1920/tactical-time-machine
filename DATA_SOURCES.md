@@ -1,5 +1,14 @@
 # Football dataset provenance
 
+## Fictional quickstart fixture
+
+`tests/fixtures/sample_football.json` is a hand-authored fictional fixture: four
+clubs, six players and eight matches. It is not downloaded from Kaggle or
+Transfermarkt and contains no real player statistics. `scripts/create_sample_db.py`
+builds a small SQLite database from it without overwriting existing files.
+The numeric evaluations and labelled demo replay use this fixture. This does not
+change the undecided licensing status of this repository.
+
 ## Source and attribution
 
 The local files strongly match **Football Data from Transfermarkt**, published
